@@ -58,9 +58,11 @@ def parse_lines_map(raw: str, label: str, header_mode: bool = False) -> dict[str
         if not line or line.startswith("#"):
             continue
 
-        if header_mode and ":" in line:
+        colon = line.find(":")
+        equals = line.find("=")
+        if header_mode and colon >= 0 and (equals < 0 or colon < equals):
             key, value = line.split(":", 1)
-        elif "=" in line:
+        elif equals >= 0:
             key, value = line.split("=", 1)
         else:
             separator = "Nombre: valor" if header_mode else "clave=valor"
