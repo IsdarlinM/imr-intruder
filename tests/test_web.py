@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from fastapi.testclient import TestClient
 
-from imr_intruder.web import create_app
+from imr_intruder.web import create_app, parse_lines_map
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,6 +48,10 @@ def server_url():
 
 
 class WebTests(unittest.TestCase):
+    def test_header_equals_value_may_contain_colon(self):
+        parsed = parse_lines_map("Referer=https://example.test/path", "Headers", True)
+        self.assertEqual(parsed["Referer"], "https://example.test/path")
+
     def setUp(self):
         self.token = "test-token-123"
         self.app = create_app(request_token=self.token)
