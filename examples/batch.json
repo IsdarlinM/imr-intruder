@@ -1,0 +1,39 @@
+{
+  "workers": 2,
+  "delay_ms": 100,
+  "defaults": {
+    "timeout": 15,
+    "verify_tls": true,
+    "follow_redirects": false,
+    "headers": {
+      "User-Agent": "imr-intruder/1.0.0",
+      "Accept": "application/json"
+    }
+  },
+  "columns": [
+    {
+      "name": "server",
+      "source": "header",
+      "key": "Server",
+      "default": "-"
+    }
+  ],
+  "requests": [
+    {
+      "name": "get-example",
+      "method": "GET",
+      "url": "https://httpbin.org/get",
+      "params": {
+        "id": "7"
+      }
+    },
+    {
+      "name": "post-example",
+      "method": "POST",
+      "url": "https://httpbin.org/post",
+      "json": {
+        "enabled": true
+      }
+    }
+  ]
+}

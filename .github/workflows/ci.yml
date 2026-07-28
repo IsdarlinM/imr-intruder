@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    name: Python ${{ matrix.python-version }} / Linux
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package
+        run: python -m pip install .
+      - name: Compile
+        run: python -m compileall -q src tests scripts
+      - name: Unit and integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Command smoke suite
+        run: python scripts/smoke_test.py
+      - name: JavaScript syntax
+        run: node --check src/imr_intruder/static/app.js
+      - name: Shell syntax
+        run: bash -n install.sh uninstall.sh
+
+  linux-installer:
+    name: Native Linux installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: ./install.sh --skip-path
+      - name: Verify installed command
+        run: |
+          "$HOME/.local/bin/imr-intruder" doctor --json
+          "$HOME/.local/bin/imr-intruder" version
+          "$HOME/.local/bin/imr-intruder" web start --background --no-browser
+          "$HOME/.local/bin/imr-intruder" web status
+          "$HOME/.local/bin/imr-intruder" web stop
+      - name: Uninstall
+        run: "$HOME/.local/share/imr-intruder/uninstall.sh --purge"
+
+  windows-installer:
+    name: Native Windows CMD installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install with CMD
+        shell: cmd
+        run: install.cmd
+      - name: Verify installed command
+        shell: cmd
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" doctor --json
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" version
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" web start --background --no-browser
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" web status
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" web stop
+      - name: Uninstall with CMD
+        shell: cmd
+        run: "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE"
