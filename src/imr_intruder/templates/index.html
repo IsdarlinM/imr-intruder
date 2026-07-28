@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="request-token" content="{{ request_token }}">
+  <meta name="max-values" content="{{ max_values }}">
+  <title>imr-intruder</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">IMR</div>
+        <div>
+          <h1>imr-intruder</h1>
+          <p>imr :: v{{ version }}</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="local-badge"><span></span>{% if remote_mode %} remote token mode {% else %} localhost only {% endif %}</span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Cambiar tema">◐</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="configuration-panel">
+        <form id="request-form" autocomplete="off">
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">01 · Target</span>
+                <h2>Solicitud base</h2>
+              </div>
+            </div>
+
+            <label class="field field-wide">
+              <span>URL</span>
+              <input id="url" name="url" type="url" value="https://httpbin.org/post" required>
+              <small>Usa <code>{% raw %}{{VALUE}}{% endraw %}</code> donde debe insertarse cada valor.</small>
+            </label>
+
+            <div class="field-grid two-columns">
+              <label class="field">
+                <span>Método</span>
+                <select id="method" name="method">
+                  <option>GET</option>
+                  <option selected>POST</option>
+                  <option>PUT</option>
+                  <option>PATCH</option>
+                  <option>DELETE</option>
+                  <option>HEAD</option>
+                  <option>OPTIONS</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Tipo de body</span>
+                <select id="body-type" name="body_type">
+                  <option value="none">Sin body</option>
+                  <option value="form" selected>Form URL encoded</option>
+                  <option value="json">JSON</option>
+                  <option value="raw">Raw</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="tabs" role="tablist">
+              <button class="tab active" type="button" data-tab="body-panel">Body</button>
+              <button class="tab" type="button" data-tab="headers-panel">Headers</button>
+              <button class="tab" type="button" data-tab="params-panel">Params</button>
+              <button class="tab" type="button" data-tab="cookies-panel">Cookies</button>
+            </div>
+
+            <div id="body-panel" class="tab-panel active">
+              <label class="field field-wide">
+                <span>Contenido del body</span>
+                <textarea id="body" rows="7" spellcheck="false">username=administrator
+password={% raw %}{{VALUE}}{% endraw %}</textarea>
+                <small>Form: una pareja <code>clave=valor</code> por línea. JSON: objeto válido.</small>
+              </label>
+            </div>
+
+            <div id="headers-panel" class="tab-panel">
+              <label class="field field-wide">
+                <span>Headers</span>
+                <textarea id="headers" rows="7" spellcheck="false">User-Agent: imr-intruder/{{ version }}
+Accept: text/html,application/json</textarea>
+              </label>
+            </div>
+
+            <div id="params-panel" class="tab-panel">
+              <label class="field field-wide">
+                <span>Query parameters</span>
+                <textarea id="params" rows="7" spellcheck="false" placeholder="id={% raw %}{{VALUE}}{% endraw %}"></textarea>
+              </label>
+            </div>
+
+            <div id="cookies-panel" class="tab-panel">
+              <label class="field field-wide">
+                <span>Cookies</span>
+                <textarea id="cookies" rows="7" spellcheck="false" placeholder="session=valor"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <span class="eyebrow">02 · Dataset</span>
+            <h2>Valores de prueba</h2>
+            <label class="field field-wide">
+              <span>Un valor por línea</span>
+              <textarea id="values" rows="8" spellcheck="false">alpha
+beta
+gamma</textarea>
+              <small>Máximo {{ max_values }} valores. Las líneas vacías y comentarios con # se ignoran.</small>
+            </label>
+          </section>
+
+          <section class="panel-section">
+            <span class="eyebrow">03 · Response</span>
+            <h2>Columnas personalizadas</h2>
+            <label class="field field-wide">
+              <span>Una especificación por línea</span>
+              <textarea id="columns" rows="5" spellcheck="false">location=header:Location
+server=header:Server
+final_url=response:url</textarea>
+              <small>Formato: <code>nombre=fuente:clave</code>.</small>
+            </label>
+          </section>
+
+          <section class="panel-section compact-section">
+            <span class="eyebrow">04 · Control</span>
+            <h2>Límites de ejecución</h2>
+            <div class="field-grid three-columns">
+              <label class="field">
+                <span>Workers</span>
+                <input id="workers" type="number" min="1" max="{{ max_workers }}" value="2">
+              </label>
+              <label class="field">
+                <span>Timeout (s)</span>
+                <input id="timeout" type="number" min="0.1" max="120" step="0.1" value="15">
+              </label>
+              <label class="field">
+                <span>Delay (ms)</span>
+                <input id="delay-ms" type="number" min="0" max="60000" value="100">
+              </label>
+            </div>
+
+            <div class="switch-grid">
+              <label class="switch-row">
+                <input id="verify-tls" type="checkbox" checked>
+                <span class="switch"></span>
+                <span><strong>Verificar TLS</strong><small>Recomendado</small></span>
+              </label>
+              <label class="switch-row">
+                <input id="follow-redirects" type="checkbox">
+                <span class="switch"></span>
+                <span><strong>Seguir redirecciones</strong><small>Desactivado facilita detectar 3xx</small></span>
+              </label>
+            </div>
+          </section>
+
+          <div class="form-actions">
+            <button id="run-button" class="primary-button" type="submit">
+              <span class="button-icon">▶</span>
+              Ejecutar requests
+            </button>
+            <button id="cancel-button" class="secondary-button danger" type="button" disabled>Detener</button>
+          </div>
+
+          <p class="authorization-note">Úsalo únicamente sobre sistemas propios, laboratorios o auditorías autorizadas.</p>
+        </form>
+      </aside>
+
+      <section class="results-panel">
+        <div class="results-header">
+          <div>
+            <span class="eyebrow">Live results</span>
+            <h2>Resultados HTTP</h2>
+          </div>
+          <div class="results-actions">
+            <button id="clear-button" class="secondary-button" type="button">Limpiar</button>
+            <button id="export-button" class="secondary-button" type="button" disabled>Exportar CSV</button>
+          </div>
+        </div>
+
+        <div class="progress-card">
+          <div class="progress-copy">
+            <div>
+              <span id="run-status" class="status-pill idle">Listo</span>
+              <strong id="progress-label">0 / 0</strong>
+            </div>
+            <span id="elapsed-label">00:00</span>
+          </div>
+          <div class="progress-track"><div id="progress-bar"></div></div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span>Completados</span>
+            <strong id="stat-completed">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>2xx</span>
+            <strong id="stat-success">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Distintos</span>
+            <strong id="stat-distinct">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>Promedio</span>
+            <strong id="stat-average">0 ms</strong>
+          </article>
+        </div>
+
+        <div class="table-toolbar">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="table-search" type="search" placeholder="Buscar en resultados">
+          </label>
+          <select id="status-filter" aria-label="Filtrar por status">
+            <option value="all">Todos los status</option>
+            <option value="2xx">Solo 2xx</option>
+            <option value="3xx">Solo 3xx</option>
+            <option value="4xx">Solo 4xx</option>
+            <option value="5xx">Solo 5xx</option>
+            <option value="error">Errores</option>
+          </select>
+          <label class="compact-check">
+            <input id="anomaly-filter" type="checkbox">
+            Solo diferencias
+          </label>
+        </div>
+
+        <div id="message-box" class="message-box hidden"></div>
+
+        <div class="table-frame">
+          <table id="results-table">
+            <thead><tr id="results-head"></tr></thead>
+            <tbody id="results-body">
+              <tr class="empty-row"><td>Configura la solicitud y ejecuta para ver resultados en tiempo real.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</body>
+</html>
