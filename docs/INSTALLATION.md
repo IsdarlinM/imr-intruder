@@ -1,110 +1,88 @@
-# Installation and lifecycle
+# Installation
 
-## Supported environments
+## Python requirement
 
-- Linux distributions with Python 3.10+ and `venv`
-- Kali Linux, Debian, Ubuntu, Fedora, Arch, and similar distributions
-- Windows 10 or Windows 11 with Python 3.10+
+`imr-intruder` requires Python 3.10 or newer. The installers stop before changing the system when the requirement is not met.
 
-The project does not commit binaries or virtual environments. The native platform installer creates an isolated environment on the user's machine.
-
-## Linux installer
+## Linux native installer
 
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-Default locations:
-
-```text
-Application releases: ~/.local/share/imr-intruder/releases/<version>/
-Current release:       ~/.local/share/imr-intruder/current
-Command launcher:      ~/.local/bin/imr-intruder
-Runtime state/logs:    ~/.local/state/imr-intruder/
-```
-
-XDG overrides are honored through `XDG_DATA_HOME`, `XDG_BIN_HOME`, and `XDG_STATE_HOME`.
-
-The installer is idempotent. Reinstalling the same version replaces that release only after preserving a temporary backup. `doctor` and `version` must pass before installation completes.
-
-### Missing venv support
-
-Debian, Ubuntu, or Kali:
+Optional parameters:
 
 ```bash
-sudo apt update
-sudo apt install python3-venv
+./install.sh --source /path/to/source
+./install.sh --python /usr/bin/python3.12
+./install.sh --app-home "$HOME/.local/share/imr-intruder"
+./install.sh --bin-dir "$HOME/.local/bin"
 ```
 
-Specify another Python interpreter:
+The installer:
 
-```bash
-PYTHON_BIN=python3.12 ./install.sh
-```
+1. Detects Python 3.10+.
+2. Reads the application version from the package.
+3. Creates a staging virtual environment.
+4. Installs dependencies from `requirements.txt`.
+5. Installs the project without build isolation downloads.
+6. Falls back to validated host dependencies only when the package index is unavailable.
+7. Runs `version` and `doctor` before activation.
+8. Activates the version under `releases/<version>`.
+9. Creates the launcher in `~/.local/bin`.
+10. Adds a managed environment block to `.profile` and existing Bash/Zsh profiles.
 
-### PATH
-
-The installer adds this marked line when needed:
-
-```bash
-export PATH="${XDG_BIN_HOME:-$HOME/.local/bin}:$PATH" # imr-intruder
-```
-
-Use `--skip-path` to opt out.
+The installer never requires root.
 
 ## Windows CMD installer
+
+Run from Command Prompt:
 
 ```cmd
 install.cmd
 ```
 
-Default locations:
+Optional source path:
 
-```text
-Application releases: %LOCALAPPDATA%\Programs\imr-intruder\releases\<version>\
-Command launcher:      %LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd
-Runtime state/logs:    %LOCALAPPDATA%\imr-intruder\state\
+```cmd
+install.cmd /SOURCE C:\path\to\imr-intruder
 ```
 
-The installer uses `py -3` when available, otherwise `python`. The launcher directory is added to the current user's PATH through `HKCU\Environment`, and Windows is notified of the environment update. Existing terminals may still need to be reopened.
+The installer:
 
-## Verification
+1. Detects `py -3` or `python` with Python 3.10+.
+2. Creates an isolated versioned virtual environment.
+3. Installs all dependencies.
+4. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
+5. Updates the user PATH through the registry without truncating it.
+6. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
+7. Broadcasts the Windows environment update.
+8. Validates the installed command with `doctor`.
 
-```bash
-imr-intruder doctor
-imr-intruder version
-imr-intruder request --help
-imr-intruder intrude --help
-imr-intruder batch --help
-imr-intruder web --help
-```
+No PowerShell is required.
 
-Start and validate the web console:
+## Environment variables
 
-```bash
-imr-intruder web start --background --no-browser
-imr-intruder web status
-imr-intruder web stop
-```
+| Variable | Linux default | Windows default |
+|---|---|---|
+| `IMR_INTRUDER_HOME` | `~/.local/share/imr-intruder` | `%LOCALAPPDATA%\Programs\imr-intruder` |
+| `IMR_INTRUDER_CONFIG` | `~/.config/imr-intruder` | `%APPDATA%\imr-intruder` |
+| `IMR_INTRUDER_STATE` | `~/.local/state/imr-intruder` | `%LOCALAPPDATA%\imr-intruder\state` |
+| `IMR_INTRUDER_DATA` | `$IMR_INTRUDER_HOME/data` | `%LOCALAPPDATA%\imr-intruder\data` |
+| `IMR_INTRUDER_CACHE` | `~/.cache/imr-intruder` | `%LOCALAPPDATA%\imr-intruder\cache` |
+| `IMR_INTRUDER_GITHUB_TOKEN` | optional update token | optional update token |
 
 ## Updating
 
-From an authenticated environment that can access the official repository:
-
 ```bash
+imr-intruder check-update
 imr-intruder update
 ```
 
-Preview the exact update command without changing the installation:
+No new clone is required. The updater downloads and validates a GitHub archive and invokes the native installer from the extracted source.
 
-```bash
-imr-intruder update --dry-run
-```
-
-The native installers can also be rerun from a freshly downloaded or cloned release. User runtime state is stored separately from release files.
-
-## Uninstallation
+## Uninstalling
 
 Linux:
 
@@ -120,4 +98,4 @@ Windows:
 %LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE
 ```
 
-Without purge, runtime logs and web-process state are preserved for troubleshooting.
+Without purge, user data/configuration may be preserved. Purge removes application data, state, cache, and configuration.

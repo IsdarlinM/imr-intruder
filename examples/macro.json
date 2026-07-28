@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "request": {
+        "name": "fetch-token",
+        "method": "GET",
+        "url": "http://127.0.0.1:8000/token"
+      },
+      "extract": {
+        "TOKEN": "json:token"
+      },
+      "require_status": 200
+    },
+    {
+      "request": {
+        "name": "use-token",
+        "method": "GET",
+        "url": "http://127.0.0.1:8000/check?token={{TOKEN}}"
+      },
+      "require_status": 200
+    }
+  ]
+}

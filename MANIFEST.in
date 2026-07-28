@@ -1,4 +1,3 @@
 recursive-include src/imr_intruder/templates *.html
 recursive-include src/imr_intruder/static *.css *.js
-recursive-include docs *.md
-include install.sh install.cmd uninstall.sh uninstall.cmd SECURITY.md CHANGELOG.md
+include README.md CHANGELOG.md SECURITY.md LICENSE

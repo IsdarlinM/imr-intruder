@@ -1,139 +1,94 @@
 # Command reference
 
-## Global help
+Use `imr-intruder COMMAND --help` for the authoritative option list.
 
-```bash
-imr-intruder --help
-imr-intruder --version
-```
+## HTTP execution
 
-## `request`
+### `request`
+Sends one HTTP request with custom method, headers, parameters, cookies, authentication, proxy, JSON/form/raw/multipart body, TLS, redirect, HTTP/2, retries, rate control, custom columns, response rules, and exports.
 
-Sends one or more direct requests. Repeated `--url` values share the same request options.
+### `intrude`
+Renders named `{{PLACEHOLDER}}` values using sniper, battering-ram, pitchfork, or cluster-bomb modes. `--max-requests` prevents accidental unbounded combinations.
 
-```bash
-imr-intruder request --url URL [--url URL] [options]
-```
+### `batch`
+Executes a JSON object containing a `requests` list.
 
-Important options:
+### `repeater`
+Imports and repeats raw, cURL, HAR, Burp, or ZAP requests.
 
-```text
--X, --method METHOD
--p, --param KEY=VALUE
--H, --header "Name: value"
--b, --cookie KEY=VALUE
--d, --data KEY=VALUE
--j, --json JSON|@FILE
---body TEXT
---body-file FILE
---auth USER:PASSWORD
---proxy URL
---timeout SECONDS
--L, --follow-redirects
--k, --insecure
---repeat COUNT
---workers COUNT
---delay-ms MILLISECONDS
---column SPEC
---csv FILE
---jsonl FILE
---no-live
-```
-
-Only one body mode may be used: form data, JSON, raw body, or body file.
-
-## `intrude`
-
-Creates one request per value and recursively replaces `{{VALUE}}`.
-
-```bash
-imr-intruder intrude --url URL_WITH_PLACEHOLDER [options]
-```
-
-Dataset options:
+## Import
 
 ```text
--V, --value VALUE
--W, --values-file FILE
---value-column NAME
+import raw
+import curl
+import har
+import burp
+import zap
 ```
 
-Values from files and repeated `--value` options are merged in order and deduplicated.
+Output is a batch-compatible JSON file.
 
-## `batch`
+## State
 
-```bash
-imr-intruder batch CONFIG.json [options]
-```
+### `session`
+Creates, lists, displays, updates, and deletes persistent session configuration. Cookies and authentication data are hidden unless explicitly requested.
 
-Options may override the JSON configuration:
+### `workspace`
+Creates and selects isolated project directories and exports them as compressed archives.
+
+### `macro`
+Runs ordered request steps, extracts variables, and stores variables in a session.
+
+## Intelligence and evidence
+
+- `--match text:VALUE`
+- `--match regex:PATTERN`
+- `--exclude ...`
+- `--extract name=header:Header-Name`
+- `--extract name=json:path.to.value`
+- `--extract name=regex:(capture)`
+- `--cluster-threshold 98`
+- `--column name=header:Server`
+- `--column name=response:url`
+
+### `report`
+Builds an offline, redacted HTML report from JSON/JSONL results.
+
+## Extended transports
+
+### `websocket`
+Sends a bounded list of messages and records each reply or timeout.
+
+### `browser`
+Uses optional Playwright/Chromium for client-rendered pages and screenshots.
+
+### `plugins`
+Lists Python entry-point plugins registered under `imr_intruder.plugins`.
+
+## Web lifecycle
 
 ```text
---workers COUNT
---delay-ms MILLISECONDS
---csv FILE
---jsonl FILE
---no-live
+web start
+web start --background
+web status
+web open
+web stop
 ```
 
-## `web`
+Remote listening requires `--allow-remote`. Multiuser role tokens are managed with `collab`.
 
-```bash
-imr-intruder web [start|stop|status|open] [options]
-```
+## Update lifecycle
 
-`web` without an action is equivalent to `web start`.
+### `check-update`
+Checks the latest GitHub release or the `main` commit. Exit code `0` means an update is available; exit code `2` means the installation is current.
 
-Foreground:
+### `update`
+Downloads and safely installs an update without requiring a new clone. Supports release/main channels, private repository tokens, dry-run, and force.
 
-```bash
-imr-intruder web start --host 127.0.0.1 --port 7415
-```
+## Diagnostics
 
-Background lifecycle:
+### `doctor`
+Reports Python compatibility, executable, storage paths, and configured environment variables.
 
-```bash
-imr-intruder web start --background --no-browser
-imr-intruder web status
-imr-intruder web open
-imr-intruder web stop
-```
-
-Start options:
-
-```text
---host HOST
---port PORT
---no-browser
---background
---log-file FILE
---allow-remote
---token TOKEN
-```
-
-## `doctor`
-
-```bash
-imr-intruder doctor
-imr-intruder doctor --json
-```
-
-Checks Python, OpenSSL, required dependencies, temporary-directory access, and package version.
-
-## `update`
-
-```bash
-imr-intruder update
-imr-intruder update --pre
-imr-intruder update --dry-run
-```
-
-The repository may require GitHub authentication when it is private.
-
-## `version`
-
-```bash
-imr-intruder version
-```
-
-Displays the application signature, application version, Python version, and operating system.
+### `version`
+Prints the installed version.

@@ -1,252 +1,115 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="request-token" content="{{ request_token }}">
-  <meta name="max-values" content="{{ max_values }}">
   <title>imr-intruder</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">IMR</div>
-        <div>
-          <h1>imr-intruder</h1>
-          <p>imr :: v{{ version }}</p>
+<body data-token="{{ token }}">
+  <header class="topbar">
+    <div>
+      <h1>imr-intruder</h1>
+      <span class="version">imr :: v{{ version }}</span>
+    </div>
+    <div class="actions">
+      <button id="themeButton" class="ghost" type="button">Theme</button>
+      <button id="runButton" class="primary" type="button">Run requests</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel configuration">
+      <div class="section-title">
+        <div><span class="eyebrow">Request builder</span><h2>Target and transport</h2></div>
+        <span id="stateBadge" class="badge">Ready</span>
+      </div>
+      <div class="grid request-grid">
+        <label class="method-field">Method<select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label>
+        <label class="url-field">URL<input id="url" type="url" placeholder="https://example.test/api/{{VALUE}}" autocomplete="off"></label>
+        <label>Workers<input id="workers" type="number" min="1" max="16" value="2"></label>
+        <label>Delay ms<input id="delayMs" type="number" min="0" value="0"></label>
+        <label>Timeout<input id="timeout" type="number" min="0.1" value="15" step="0.1"></label>
+        <label>Retries<input id="retries" type="number" min="0" max="5" value="0"></label>
+      </div>
+      <div class="toggles">
+        <label><input id="verifyTls" type="checkbox" checked> Verify TLS</label>
+        <label><input id="followRedirects" type="checkbox"> Follow redirects</label>
+        <label><input id="http2" type="checkbox"> HTTP/2</label>
+        <label><input id="backoff" type="checkbox"> Retry backoff</label>
+      </div>
+    </section>
+
+    <section class="editor-layout">
+      <div class="panel editor-panel">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="headers" type="button">Headers</button>
+          <button class="tab" data-tab="params" type="button">Parameters</button>
+          <button class="tab" data-tab="cookies" type="button">Cookies</button>
+          <button class="tab" data-tab="body" type="button">Body</button>
+          <button class="tab" data-tab="payloads" type="button">Payloads</button>
+          <button class="tab" data-tab="analysis" type="button">Analysis</button>
+        </div>
+        <div class="tab-content active" data-panel="headers"><textarea id="headers" spellcheck="false" placeholder="User-Agent: imr-intruder/1.3.0&#10;X-Test: {{VALUE}}"></textarea></div>
+        <div class="tab-content" data-panel="params"><textarea id="params" spellcheck="false" placeholder="page=1&#10;query={{VALUE}}"></textarea></div>
+        <div class="tab-content" data-panel="cookies"><textarea id="cookies" spellcheck="false" placeholder="session=research-session"></textarea></div>
+        <div class="tab-content" data-panel="body">
+          <label>Body type<select id="bodyType"><option value="none">None</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw</option></select></label>
+          <textarea id="body" spellcheck="false" placeholder='{"value":"{{VALUE}}"}'></textarea>
+        </div>
+        <div class="tab-content" data-panel="payloads">
+          <div class="grid payload-controls">
+            <label>Mode<select id="mode"><option value="sniper">Sniper</option><option value="battering-ram">Battering ram</option><option value="pitchfork">Pitchfork</option><option value="cluster-bomb">Cluster bomb</option></select></label>
+            <label>Maximum requests<input id="maxRequests" type="number" min="1" max="10000" value="2000"></label>
+          </div>
+          <p class="hint">One value per line. For multiple placeholders, use sections such as <code>[USER]</code> and <code>[TOKEN]</code>.</p>
+          <textarea id="payloads" spellcheck="false" placeholder="alpha&#10;beta&#10;gamma"></textarea>
+        </div>
+        <div class="tab-content analysis-grid" data-panel="analysis">
+          <label>Columns<textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
+          <label>Match rules<textarea id="match" placeholder="text:Welcome&#10;regex:user_id\s*=\s*\d+"></textarea></label>
+          <label>Exclude rules<textarea id="exclude" placeholder="text:Invalid credentials"></textarea></label>
+          <label>Extract columns<textarea id="extract" placeholder="csrf=regex:name=\"csrf\" value=\"([^\"]+)\""></textarea></label>
         </div>
       </div>
-      <div class="topbar-actions">
-        <span class="local-badge"><span></span>{% if remote_mode %} remote token mode {% else %} localhost only {% endif %}</span>
-        <button id="theme-toggle" class="icon-button" type="button" aria-label="Cambiar tema">◐</button>
-      </div>
-    </header>
 
-    <main class="workspace">
-      <aside class="configuration-panel">
-        <form id="request-form" autocomplete="off">
-          <section class="panel-section">
-            <div class="section-heading">
-              <div>
-                <span class="eyebrow">01 · Target</span>
-                <h2>Solicitud base</h2>
-              </div>
-            </div>
-
-            <label class="field field-wide">
-              <span>URL</span>
-              <input id="url" name="url" type="url" value="https://httpbin.org/post" required>
-              <small>Usa <code>{% raw %}{{VALUE}}{% endraw %}</code> donde debe insertarse cada valor.</small>
-            </label>
-
-            <div class="field-grid two-columns">
-              <label class="field">
-                <span>Método</span>
-                <select id="method" name="method">
-                  <option>GET</option>
-                  <option selected>POST</option>
-                  <option>PUT</option>
-                  <option>PATCH</option>
-                  <option>DELETE</option>
-                  <option>HEAD</option>
-                  <option>OPTIONS</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Tipo de body</span>
-                <select id="body-type" name="body_type">
-                  <option value="none">Sin body</option>
-                  <option value="form" selected>Form URL encoded</option>
-                  <option value="json">JSON</option>
-                  <option value="raw">Raw</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="tabs" role="tablist">
-              <button class="tab active" type="button" data-tab="body-panel">Body</button>
-              <button class="tab" type="button" data-tab="headers-panel">Headers</button>
-              <button class="tab" type="button" data-tab="params-panel">Params</button>
-              <button class="tab" type="button" data-tab="cookies-panel">Cookies</button>
-            </div>
-
-            <div id="body-panel" class="tab-panel active">
-              <label class="field field-wide">
-                <span>Contenido del body</span>
-                <textarea id="body" rows="7" spellcheck="false">username=administrator
-password={% raw %}{{VALUE}}{% endraw %}</textarea>
-                <small>Form: una pareja <code>clave=valor</code> por línea. JSON: objeto válido.</small>
-              </label>
-            </div>
-
-            <div id="headers-panel" class="tab-panel">
-              <label class="field field-wide">
-                <span>Headers</span>
-                <textarea id="headers" rows="7" spellcheck="false">User-Agent: imr-intruder/{{ version }}
-Accept: text/html,application/json</textarea>
-              </label>
-            </div>
-
-            <div id="params-panel" class="tab-panel">
-              <label class="field field-wide">
-                <span>Query parameters</span>
-                <textarea id="params" rows="7" spellcheck="false" placeholder="id={% raw %}{{VALUE}}{% endraw %}"></textarea>
-              </label>
-            </div>
-
-            <div id="cookies-panel" class="tab-panel">
-              <label class="field field-wide">
-                <span>Cookies</span>
-                <textarea id="cookies" rows="7" spellcheck="false" placeholder="session=valor"></textarea>
-              </label>
-            </div>
-          </section>
-
-          <section class="panel-section">
-            <span class="eyebrow">02 · Dataset</span>
-            <h2>Valores de prueba</h2>
-            <label class="field field-wide">
-              <span>Un valor por línea</span>
-              <textarea id="values" rows="8" spellcheck="false">alpha
-beta
-gamma</textarea>
-              <small>Máximo {{ max_values }} valores. Las líneas vacías y comentarios con # se ignoran.</small>
-            </label>
-          </section>
-
-          <section class="panel-section">
-            <span class="eyebrow">03 · Response</span>
-            <h2>Columnas personalizadas</h2>
-            <label class="field field-wide">
-              <span>Una especificación por línea</span>
-              <textarea id="columns" rows="5" spellcheck="false">location=header:Location
-server=header:Server
-final_url=response:url</textarea>
-              <small>Formato: <code>nombre=fuente:clave</code>.</small>
-            </label>
-          </section>
-
-          <section class="panel-section compact-section">
-            <span class="eyebrow">04 · Control</span>
-            <h2>Límites de ejecución</h2>
-            <div class="field-grid three-columns">
-              <label class="field">
-                <span>Workers</span>
-                <input id="workers" type="number" min="1" max="{{ max_workers }}" value="2">
-              </label>
-              <label class="field">
-                <span>Timeout (s)</span>
-                <input id="timeout" type="number" min="0.1" max="120" step="0.1" value="15">
-              </label>
-              <label class="field">
-                <span>Delay (ms)</span>
-                <input id="delay-ms" type="number" min="0" max="60000" value="100">
-              </label>
-            </div>
-
-            <div class="switch-grid">
-              <label class="switch-row">
-                <input id="verify-tls" type="checkbox" checked>
-                <span class="switch"></span>
-                <span><strong>Verificar TLS</strong><small>Recomendado</small></span>
-              </label>
-              <label class="switch-row">
-                <input id="follow-redirects" type="checkbox">
-                <span class="switch"></span>
-                <span><strong>Seguir redirecciones</strong><small>Desactivado facilita detectar 3xx</small></span>
-              </label>
-            </div>
-          </section>
-
-          <div class="form-actions">
-            <button id="run-button" class="primary-button" type="submit">
-              <span class="button-icon">▶</span>
-              Ejecutar requests
-            </button>
-            <button id="cancel-button" class="secondary-button danger" type="button" disabled>Detener</button>
-          </div>
-
-          <p class="authorization-note">Úsalo únicamente sobre sistemas propios, laboratorios o auditorías autorizadas.</p>
-        </form>
+      <aside class="panel run-panel">
+        <h2>Run control</h2>
+        <div class="progress-track"><div id="progressBar"></div></div>
+        <div class="metrics">
+          <div><span>Completed</span><strong id="completedMetric">0</strong></div>
+          <div><span>Interesting</span><strong id="interestingMetric">0</strong></div>
+          <div><span>Errors</span><strong id="errorMetric">0</strong></div>
+        </div>
+        <button id="pauseButton" type="button" disabled>Pause</button>
+        <button id="cancelButton" class="danger" type="button" disabled>Cancel</button>
+        <a id="csvLink" class="button-link disabled" href="#">Export CSV</a>
+        <div id="message" class="message" aria-live="polite"></div>
       </aside>
+    </section>
 
-      <section class="results-panel">
-        <div class="results-header">
-          <div>
-            <span class="eyebrow">Live results</span>
-            <h2>Resultados HTTP</h2>
-          </div>
-          <div class="results-actions">
-            <button id="clear-button" class="secondary-button" type="button">Limpiar</button>
-            <button id="export-button" class="secondary-button" type="button" disabled>Exportar CSV</button>
-          </div>
+    <section class="panel results-panel">
+      <div class="section-title results-title">
+        <div><span class="eyebrow">Response intelligence</span><h2>Live results</h2></div>
+        <div class="filters">
+          <input id="search" type="search" placeholder="Filter rows">
+          <select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option><option value="error">Errors</option></select>
+          <label><input id="differenceOnly" type="checkbox"> Differences only</label>
         </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Name</th><th>Status</th><th>Bytes</th><th>Time</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 
-        <div class="progress-card">
-          <div class="progress-copy">
-            <div>
-              <span id="run-status" class="status-pill idle">Listo</span>
-              <strong id="progress-label">0 / 0</strong>
-            </div>
-            <span id="elapsed-label">00:00</span>
-          </div>
-          <div class="progress-track"><div id="progress-bar"></div></div>
-        </div>
-
-        <div class="stats-grid">
-          <article class="stat-card">
-            <span>Completados</span>
-            <strong id="stat-completed">0</strong>
-          </article>
-          <article class="stat-card">
-            <span>2xx</span>
-            <strong id="stat-success">0</strong>
-          </article>
-          <article class="stat-card">
-            <span>Distintos</span>
-            <strong id="stat-distinct">0</strong>
-          </article>
-          <article class="stat-card">
-            <span>Promedio</span>
-            <strong id="stat-average">0 ms</strong>
-          </article>
-        </div>
-
-        <div class="table-toolbar">
-          <label class="search-box">
-            <span>⌕</span>
-            <input id="table-search" type="search" placeholder="Buscar en resultados">
-          </label>
-          <select id="status-filter" aria-label="Filtrar por status">
-            <option value="all">Todos los status</option>
-            <option value="2xx">Solo 2xx</option>
-            <option value="3xx">Solo 3xx</option>
-            <option value="4xx">Solo 4xx</option>
-            <option value="5xx">Solo 5xx</option>
-            <option value="error">Errores</option>
-          </select>
-          <label class="compact-check">
-            <input id="anomaly-filter" type="checkbox">
-            Solo diferencias
-          </label>
-        </div>
-
-        <div id="message-box" class="message-box hidden"></div>
-
-        <div class="table-frame">
-          <table id="results-table">
-            <thead><tr id="results-head"></tr></thead>
-            <tbody id="results-body">
-              <tr class="empty-row"><td>Configura la solicitud y ejecuta para ver resultados en tiempo real.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+  <div id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header"><h2>Response details</h2><button id="drawerClose" type="button">Close</button></div>
+    <pre id="drawerContent"></pre>
   </div>
-
-  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+  <script src="/static/app.js" defer></script>
 </body>
 </html>

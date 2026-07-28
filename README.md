@@ -1,253 +1,183 @@
 # imr-intruder
 
+`imr-intruder` is a professional multimode HTTP request and response-intelligence toolkit for authorized security testing, laboratories, CTFs, and reproducible application diagnostics.
+
 ```text
 imr-intruder
-imr :: v1.1.0
+imr :: v1.3.0
 ```
 
-`imr-intruder` is a professional multimode HTTP request matrix for controlled request replay, response comparison, API testing, authorized security assessments, laboratories, CTFs, and bug-bounty targets that explicitly permit the performed tests.
+## Requirements
 
-## Highlights
+- Python **3.10 or newer**.
+- Linux, Kali, Debian, Ubuntu, or Windows 10/11.
+- Network authorization for every tested target.
 
-- One live console table that updates while requests finish; no duplicate progress output.
-- Direct request, dataset/intruder, heterogeneous batch, and professional web-console modes.
-- Recursive `{{VALUE}}` replacement in URLs, headers, parameters, cookies, form data, JSON, and raw bodies.
-- GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, and custom HTTP methods.
-- Form, JSON, and raw request bodies; cookies; custom headers; Basic Auth; proxy support; TLS and redirect controls.
-- Custom columns extracted from headers, cookies, JSON paths, regex, request values, and response metadata.
-- CSV and JSONL exports.
-- Web UI with live streaming, search, HTTP-status filters, anomaly highlighting, cancellation, and CSV export.
-- Foreground and managed background web execution with `start`, `stop`, `status`, and `open` commands.
-- Native user-level installers for Linux (`install.sh`) and Windows CMD (`install.cmd`), with isolated environments and automatic PATH configuration.
-- Conservative concurrency defaults, explicit delays, local-only web binding by default, API session tokens, CSP, and defensive headers.
+## Native installation
 
-> Use this tool only against systems you own or are explicitly authorized to test. Keep request rates within the target's published limits.
-
-## Command structure
-
-```text
-imr-intruder request                 Send one or more direct HTTP requests
-imr-intruder intrude                 Insert dataset values into {{VALUE}}
-imr-intruder batch CONFIG.json       Execute heterogeneous requests from JSON
-imr-intruder web start               Run the web console in the foreground
-imr-intruder web start --background  Run the web console as a user process
-imr-intruder web status              Show web-console status, PID, URL, and log
-imr-intruder web open                Open the active background console
-imr-intruder web stop                Stop the background console
-imr-intruder doctor                  Validate the installation and dependencies
-imr-intruder update                  Upgrade from the official repository
-imr-intruder version                 Show application and runtime versions
-```
-
-Every command has dedicated help:
-
-```bash
-imr-intruder COMMAND --help
-imr-intruder web --help
-```
-
-## Installation
-
-Python 3.10 or newer is required. The native installers build an isolated virtual environment during installation; no binaries or virtual environments are stored in the repository.
-
-### Linux, Kali, Debian, Ubuntu
+### Linux / Kali
 
 ```bash
 chmod +x install.sh
 ./install.sh
+source ~/.profile
+imr-intruder doctor
 ```
 
-The installer:
+The installer creates an isolated versioned environment, installs dependencies, creates `~/.local/bin/imr-intruder`, and configures these variables automatically:
 
-1. Validates Python 3.10+ and the `venv` module.
-2. Creates a versioned release under `~/.local/share/imr-intruder/releases/`.
-3. Installs the Python package in an isolated environment.
-4. Runs `doctor` and `version` smoke checks before completing.
-5. Creates `~/.local/bin/imr-intruder`.
-6. Adds `~/.local/bin` to `.profile`, `.bashrc`, and `.zshrc` when applicable.
-
-Skip PATH modifications when managing PATH yourself:
-
-```bash
-./install.sh --skip-path
+```text
+IMR_INTRUDER_HOME
+IMR_INTRUDER_CONFIG
+IMR_INTRUDER_STATE
+IMR_INTRUDER_DATA
+IMR_INTRUDER_CACHE
 ```
 
-Uninstall while retaining runtime logs:
-
-```bash
-~/.local/share/imr-intruder/uninstall.sh
-```
-
-Remove runtime logs and state too:
-
-```bash
-~/.local/share/imr-intruder/uninstall.sh --purge
-```
-
-### Windows 10/11 — CMD installer
-
-Open **Command Prompt** in the project folder and run:
+### Windows CMD
 
 ```cmd
 install.cmd
 ```
 
-The installer:
-
-1. Selects `py -3` or `python` and validates Python 3.10+.
-2. Creates a versioned release under `%LOCALAPPDATA%\Programs\imr-intruder\releases\`.
-3. Installs the package in an isolated virtual environment.
-4. Runs `doctor` and `version` smoke checks.
-5. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
-6. Adds the launcher directory to the current user's PATH through the Windows user environment registry and broadcasts the environment change.
-
-Open a new CMD or PowerShell window after installation, then run:
+Open a new CMD window and verify:
 
 ```cmd
 imr-intruder doctor
 ```
 
-Uninstall:
+The installer uses a versioned virtual environment under `%LOCALAPPDATA%\Programs\imr-intruder`, installs dependencies, creates a native CMD launcher, updates the user PATH, and sets the same `IMR_INTRUDER_*` variables through the Windows user environment registry.
 
-```cmd
-%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd
-```
+Complete installation details: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-Purge runtime logs and state:
-
-```cmd
-%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE
-```
-
-Detailed installation and troubleshooting: [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
-
-## Quick verification
-
-```bash
-imr-intruder doctor
-imr-intruder version
-imr-intruder --help
-```
-
-A low-impact public availability smoke test:
-
-```bash
-imr-intruder request \
-  --url https://h4cker.org/ \
-  --method GET \
-  --column server=header:Server \
-  --column final_url=response:url
-```
-
-This sends one ordinary GET request. Do not use dataset mode against third-party services unless their authorization and rate limits explicitly allow it.
-
-## Direct request mode
-
-GET with parameters and custom response columns:
-
-```bash
-imr-intruder request \
-  --url https://httpbin.org/get \
-  --param id=7 \
-  --header "Accept: application/json" \
-  --column server=header:Server \
-  --column final_url=response:url
-```
-
-POST form:
-
-```bash
-imr-intruder request \
-  --url https://httpbin.org/post \
-  --method POST \
-  --data username=imr \
-  --data enabled=true
-```
-
-POST JSON:
-
-```bash
-imr-intruder request \
-  --url https://httpbin.org/post \
-  --method POST \
-  --json '{"username":"imr","enabled":true}'
-```
-
-Read JSON or raw bodies from files:
-
-```bash
-imr-intruder request --url https://example.test/api --method POST --json @payload.json
-imr-intruder request --url https://example.test/api --method POST --body-file payload.xml
-```
-
-Multiple URLs with bounded concurrency:
-
-```bash
-imr-intruder request \
-  --url https://example.test/health \
-  --url https://example.test/version \
-  --workers 2
-```
-
-## Dataset / intruder mode
-
-Insert `{{VALUE}}` wherever each supplied value must be placed:
-
-```bash
-imr-intruder intrude \
-  --url https://example.test/authorized-lab \
-  --method POST \
-  --data username=authorized-user \
-  --data 'test_value={{VALUE}}' \
-  --values-file examples/values.txt \
-  --column location=header:Location \
-  --workers 2 \
-  --delay-ms 150 \
-  --csv results.csv
-```
-
-Inline values:
-
-```bash
-imr-intruder intrude \
-  --url 'https://example.test/api?id={{VALUE}}' \
-  --value alpha \
-  --value beta \
-  --value gamma
-```
-
-The placeholder works recursively in:
+## Command structure
 
 ```text
-URL:     https://example.test/items/{{VALUE}}
-Header:  X-Test-ID: {{VALUE}}
-Param:   id={{VALUE}}
-Cookie:  experiment={{VALUE}}
-Form:    value={{VALUE}}
-JSON:    {"value":"{{VALUE}}"}
-Raw:     <value>{{VALUE}}</value>
+imr-intruder request
+imr-intruder intrude
+imr-intruder batch
+imr-intruder repeater
+imr-intruder import
+imr-intruder session
+imr-intruder workspace
+imr-intruder report
+imr-intruder macro
+imr-intruder websocket
+imr-intruder browser
+imr-intruder plugins
+imr-intruder collab
+imr-intruder web
+imr-intruder check-update
+imr-intruder update
+imr-intruder doctor
+imr-intruder version
 ```
 
-## Batch mode
+Every command supports `--help`.
+
+## Direct request
 
 ```bash
-imr-intruder batch examples/batch.json --workers 2 --csv batch-results.csv
+imr-intruder request \
+  --url https://example.test/api \
+  --method POST \
+  --json '{"name":"research"}' \
+  --column server=header:Server \
+  --column final_url=response:url
 ```
 
-Batch files support defaults, global columns, request-specific columns, environment-variable expansion, and heterogeneous methods/bodies. See [`examples/batch.json`](examples/batch.json).
+## Controlled payload variations
+
+Place one or more named placeholders anywhere in URL, headers, query parameters, cookies, JSON, form data, raw body, or multipart values:
+
+```text
+{{VALUE}}
+{{USER}}
+{{ID}}
+```
+
+```bash
+imr-intruder intrude \
+  --url 'https://example.test/search?q={{VALUE}}' \
+  --values-file values.txt \
+  --mode sniper \
+  --workers 2 \
+  --delay-ms 150 \
+  --match 'text:Welcome' \
+  --exclude 'text:Invalid request' \
+  --extract 'request_id=header:X-Request-ID' \
+  --csv results.csv \
+  --jsonl results.jsonl
+```
+
+Supported modes:
+
+- `sniper`
+- `battering-ram`
+- `pitchfork`
+- `cluster-bomb`, bounded by `--max-requests`
+
+## Response intelligence
+
+Each result can include:
+
+- HTTP status, body size, elapsed time, content type, HTTP version, and redirect location.
+- Normalized SHA-256 body hash.
+- Similarity against the baseline.
+- Response cluster.
+- Size delta and anomaly score.
+- Match/exclude results.
+- Extracted header, JSON, regex, cookie, request, or response columns.
+
+The terminal uses one live Rich table; it does not print a second duplicate table after completion.
+
+## Importing real requests
+
+```bash
+imr-intruder import raw request.txt --output batch.json
+imr-intruder import curl request.curl --output batch.json
+imr-intruder import har traffic.har --output batch.json
+imr-intruder import burp request.txt --output batch.json
+imr-intruder import zap request.txt --output batch.json
+```
+
+## Sessions and workspaces
+
+```bash
+imr-intruder session create lab
+imr-intruder session cookies lab --cookie session=test
+imr-intruder request --session lab --url https://example.test/account
+
+imr-intruder workspace create assessment
+imr-intruder workspace use assessment
+imr-intruder workspace export assessment --output assessment.tar.gz
+```
+
+Session files use restrictive permissions. Secret fields are redacted by default when displayed.
+
+## Macros
+
+Macros execute ordered requests, extract variables, and reuse them in later steps:
+
+```bash
+imr-intruder macro examples/macro.json --session lab --output macro-results.jsonl
+```
 
 ## Web console
 
-Run in the foreground:
+Foreground:
 
 ```bash
 imr-intruder web start
 ```
 
-Equivalent compatibility command:
+Background lifecycle:
 
 ```bash
-imr-intruder web
+imr-intruder web start --background
+imr-intruder web status
+imr-intruder web open
+imr-intruder web stop
 ```
 
 Default URL:
@@ -256,117 +186,100 @@ Default URL:
 http://127.0.0.1:7415
 ```
 
-Run in the background:
+The web console provides live results, payload modes, response intelligence, search, filters, details drawer, pause/resume, cancellation, CSV export, dark/light mode, and responsive mobile layout.
+
+Remote binding requires explicit authorization:
 
 ```bash
-imr-intruder web start --background
+imr-intruder web start --host 0.0.0.0 --allow-remote --multiuser --background
 ```
 
-Manage it:
+Create role-based tokens:
 
 ```bash
-imr-intruder web status
-imr-intruder web open
-imr-intruder web stop
+imr-intruder collab create-token analyst --role operator
+imr-intruder collab list
 ```
 
-Custom port and log:
+## Updates without cloning again
+
+Check the latest published release:
 
 ```bash
-imr-intruder web start \
-  --background \
-  --port 8088 \
-  --no-browser \
-  --log-file ~/.local/state/imr-intruder/custom-web.log
+imr-intruder check-update
 ```
 
-Remote binding is rejected unless explicitly enabled:
+Install it:
 
 ```bash
-imr-intruder web start --host 0.0.0.0 --allow-remote
+imr-intruder update
 ```
 
-Prefer localhost. For remote access, use a trusted network and a TLS reverse proxy; the application prints a tokenized access URL.
-
-## Custom columns
-
-```text
-server=header:Server
-location=header:Location
-request_id=header:X-Request-ID
-session=cookie:sessionid
-user_id=json:data.user.id
-final_url=response:url
-reason=response:reason
-tested_id=request_param:id
-marker=regex:marker=([^&]+)
-```
-
-Supported sources:
-
-- `header`
-- `cookie`
-- `json`
-- `regex`
-- `request_header`
-- `request_param`
-- `response`
-- `literal`
-
-## Python API
-
-```python
-from pathlib import Path
-
-from imr_intruder import run_requests
-
-results = run_requests(
-    requests_cfg=[
-        {
-            "name": "health",
-            "method": "GET",
-            "url": "http://127.0.0.1:8000/health",
-            "timeout": 5,
-        }
-    ],
-    workers=1,
-    csv_path=Path("results.csv"),
-    live=False,
-)
-```
-
-## Development and validation
+Track `main` instead of releases:
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e .
-python -m compileall -q src tests
-python -m unittest discover -s tests -v
-node --check src/imr_intruder/static/app.js
-bash -n install.sh uninstall.sh
+imr-intruder check-update --channel main
+imr-intruder update --channel main
 ```
 
-Windows development environment:
+For a private repository, set a GitHub token:
+
+```bash
+export IMR_INTRUDER_GITHUB_TOKEN='token'
+imr-intruder check-update
+```
+
+Windows CMD:
 
 ```cmd
-python -m venv .venv
-.venv\Scripts\activate.bat
-python -m pip install -e .
-python -m unittest discover -s tests -v
+set IMR_INTRUDER_GITHUB_TOKEN=token
+imr-intruder check-update
 ```
 
-Detailed command reference: [`docs/COMMANDS.md`](docs/COMMANDS.md).
+The updater downloads a GitHub ZIP, enforces archive safety limits, rejects traversal and symlink entries, cleans inherited Python/pip environment overrides, stages the installation, validates it, and activates the versioned release through the native installer.
 
-## Security model
+## Optional capabilities
 
-- The web console binds to `127.0.0.1` by default.
-- Non-loopback binding requires `--allow-remote`.
-- API calls require an unpredictable session token.
-- Remote page access uses a tokenized URL and an HTTP-only, same-site cookie.
-- CSP, frame denial, no-sniff, no-store, referrer, and permissions headers are enabled.
-- Web runs are bounded by job, value, worker, timeout, and delay limits.
-- TLS verification is enabled unless `--insecure` is explicitly used.
-- Secrets may be supplied through environment variables in batch configurations.
+HTTP/2:
 
-See [`SECURITY.md`](SECURITY.md) for responsible disclosure and operational guidance.
+```bash
+imr-intruder request --http2 --url https://example.test/
+```
+
+WebSocket:
+
+```bash
+imr-intruder websocket wss://example.test/socket --message ping
+```
+
+Browser rendering:
+
+```bash
+python -m pip install 'imr-intruder[browser]'
+playwright install chromium
+imr-intruder browser https://example.test --screenshot page.png
+```
+
+Plugins are discovered through the `imr_intruder.plugins` Python entry-point group.
+
+## Reports
+
+```bash
+imr-intruder report results.jsonl --output report.html --title 'Authorized assessment'
+```
+
+HTML reports redact common authentication headers, cookies, passwords, tokens, and secrets.
+
+## Security defaults
+
+- TLS verification enabled.
+- Redirect following disabled.
+- Localhost-only web binding.
+- Explicit opt-in for remote binding.
+- Bounded concurrency and payload generation.
+- Safe update archive extraction.
+- Redacted secrets and CSV-injection protection.
+- Response preview size limits.
+- Checkpoints for interrupted runs.
+
+See [SECURITY.md](SECURITY.md) and [docs/COMMANDS.md](docs/COMMANDS.md).
