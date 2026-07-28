@@ -86,8 +86,13 @@ def parse_key_value(values: Iterable[str] | None, label: str) -> dict[str, str]:
 def parse_headers(values: Iterable[str] | None) -> dict[str, str]:
     result: dict[str, str] = {}
     for raw in values or []:
-        separator = ":" if ":" in raw else "=" if "=" in raw else None
-        if separator is None:
+        colon = raw.find(":")
+        equals = raw.find("=")
+        if colon >= 0 and (equals < 0 or colon < equals):
+            separator = ":"
+        elif equals >= 0:
+            separator = "="
+        else:
             raise ValueError(f"Header inválido: {raw!r}. Usa 'Nombre: valor'.")
         key, value = raw.split(separator, 1)
         if not key.strip():
