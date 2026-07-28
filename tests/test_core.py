@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 from imr_intruder.core import (
     build_intruder_requests,
     load_values,
+    parse_headers,
     run_requests,
 )
 
@@ -82,6 +83,10 @@ def server_url():
 
 
 class CoreTests(unittest.TestCase):
+    def test_header_equals_value_may_contain_colon(self):
+        parsed = parse_headers(["Referer=https://example.test/path"])
+        self.assertEqual(parsed["Referer"], "https://example.test/path")
+
     def test_values_and_recursive_placeholder(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "values.txt"
