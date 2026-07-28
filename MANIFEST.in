@@ -1,0 +1,2 @@
+recursive-include src/imr_intruder/templates *.html
+recursive-include src/imr_intruder/static *.css *.js
