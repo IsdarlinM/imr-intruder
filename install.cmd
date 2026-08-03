@@ -262,16 +262,23 @@ echo [+] Installing Python %PYTHON_BOOTSTRAP_VERSION% for the current user
 if errorlevel 1 goto direct_python_download
 
 call :winget_python "%PYTHON_WINGET_ID%" "%PYTHON_TARGET_DIR%"
-if errorlevel 1 goto direct_python_download
 
+rem WinGet may report "already installed" or "no applicable upgrade" with a nonzero code.
+rem Always discover and validate the interpreter before considering the package operation failed.
 call :check_python_path "%PYTHON_TARGET_DIR%\python.exe"
 if defined PYTHON_EXE exit /b 0
 call :find_python_with_retry
 if defined PYTHON_EXE exit /b 0
 
+if not "%WINGET_RESULT%"=="0" (
+  echo [!] WinGet did not install or expose a runnable Python. Trying the verified official installer.
+  goto direct_python_download
+)
+
 echo [ERROR] WinGet reported success, but Python could not be executed.
 echo [ERROR] The installer will not install additional Python versions or overwrite the successful WinGet installation.
-echo [ERROR] WinGet logs: %LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir
+echo [ERROR] WinGet log: %WINGET_LOG%
+echo [ERROR] Bootstrap log: %PYTHON_BOOTSTRAP_LOG%
 exit /b 1
 
 :winget_python
