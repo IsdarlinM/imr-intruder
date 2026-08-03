@@ -59,3 +59,24 @@ jobs:
         run: "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd doctor --json"
       - shell: cmd
         run: "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE"
+
+  windows-bootstrap-regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install with poisoned Python environment
+        shell: cmd
+        run: |
+          set "PYTHONHOME=C:\definitely-missing-python-home"
+          set "PYTHONPATH=C:\definitely-missing-python-path"
+          set "PIP_TARGET=C:\definitely-missing-pip-target"
+          call install.cmd /NO-PYTHON-INSTALL
+      - name: Validate installed launcher
+        shell: cmd
+        run: "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd doctor --json"
+      - name: Remove test installation
+        shell: cmd
+        run: "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE"
