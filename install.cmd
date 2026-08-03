@@ -7,6 +7,8 @@ set "PYTHON_OVERRIDE="
 set "AUTO_INSTALL_PYTHON=0"
 set "NO_INSTALL_PYTHON=0"
 set "PYTHON_BOOTSTRAP_VERSION=3.14.6"
+set "PYTHON_BOOTSTRAP_TAG=314"
+set "PYTHON_DETECT_ATTEMPTS=12"
 
 :parse
 if "%~1"=="" goto parsed
@@ -97,10 +99,11 @@ if "%AUTO_INSTALL_PYTHON%"=="0" (
 
 call :install_python
 if errorlevel 1 exit /b 1
-call :find_python
-if not defined PYTHON_CMD (
-  echo [ERROR] Python installation completed, but a compatible interpreter could not be located.
-  echo [ERROR] Restart CMD and run install.cmd again, or use /PYTHON path\to\python.exe.
+call :find_python_with_retry
+if errorlevel 1 (
+  echo [ERROR] Python installation completed, but the interpreter is not discoverable.
+  echo [ERROR] Installer log: %TEMP%\imr-intruder-python-install.log
+  echo [ERROR] Run install.cmd /PYTHON "full\path\to\python.exe" only if the log confirms a nonstandard path.
   exit /b 1
 )
 %PYTHON_CMD% -m ensurepip --upgrade >nul 2>&1
@@ -110,6 +113,27 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [+] Python installed and detected: %PYTHON_CMD%
+exit /b 0
+
+:find_python_with_retry
+set /a PYTHON_DETECT_ATTEMPT=0
+:find_python_retry
+call :refresh_process_path
+call :find_python
+if defined PYTHON_CMD exit /b 0
+set /a PYTHON_DETECT_ATTEMPT+=1
+if %PYTHON_DETECT_ATTEMPT% GEQ %PYTHON_DETECT_ATTEMPTS% exit /b 1
+>nul 2>&1 timeout /t 1 /nobreak
+goto find_python_retry
+
+:refresh_process_path
+set "USER_ENV_PATH="
+set "SYSTEM_ENV_PATH="
+for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "REG_"') do set "USER_ENV_PATH=%%B"
+for /f "tokens=2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul ^| findstr /I "REG_"') do set "SYSTEM_ENV_PATH=%%B"
+if defined SYSTEM_ENV_PATH set "PATH=%SYSTEM_ENV_PATH%;%PATH%"
+if defined USER_ENV_PATH set "PATH=%USER_ENV_PATH%;%PATH%"
+if exist "%LOCALAPPDATA%\Microsoft\WindowsApps" set "PATH=%LOCALAPPDATA%\Microsoft\WindowsApps;%PATH%"
 exit /b 0
 
 :find_python
@@ -129,20 +153,65 @@ if not errorlevel 1 (
   set "PYTHON_CMD=python3"
   exit /b 0
 )
+
+call :check_python_path "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe"
+if defined PYTHON_CMD exit /b 0
+call :check_python_path "%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe"
+if defined PYTHON_CMD exit /b 0
+call :find_python_registry
+if defined PYTHON_CMD exit /b 0
+
 for %%V in (314 313 312 311 310) do (
   call :check_python_path "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
+  if defined PYTHON_CMD exit /b 0
+  call :check_python_path "%LOCALAPPDATA%\Programs\Python\Python%%V-32\python.exe"
+  if defined PYTHON_CMD exit /b 0
+  call :check_python_path "%LOCALAPPDATA%\Programs\Python\Python%%V-arm64\python.exe"
   if defined PYTHON_CMD exit /b 0
 )
 for %%V in (314 313 312 311 310) do (
   call :check_python_path "%ProgramFiles%\Python%%V\python.exe"
   if defined PYTHON_CMD exit /b 0
+  if exist "%ProgramFiles(x86)%\Python%%V-32\python.exe" call :check_python_path "%ProgramFiles(x86)%\Python%%V-32\python.exe"
+  if defined PYTHON_CMD exit /b 0
+)
+
+call :search_python_tree "%LOCALAPPDATA%\Programs\Python"
+if defined PYTHON_CMD exit /b 0
+call :search_python_tree "%LOCALAPPDATA%\Microsoft\WinGet\Packages"
+if defined PYTHON_CMD exit /b 0
+call :search_python_tree "%LOCALAPPDATA%\Python"
+exit /b 0
+
+:find_python_registry
+for %%K in ("HKCU\Software\Python" "HKLM\Software\Python") do (
+  for /f "tokens=2,*" %%A in ('reg query %%K /s /v ExecutablePath 2^>nul ^| findstr /I "ExecutablePath"') do (
+    call :check_python_path "%%B"
+    if defined PYTHON_CMD exit /b 0
+  )
+)
+for %%K in ("HKLM\Software\Python" "HKLM\Software\WOW6432Node\Python") do (
+  for /f "tokens=2,*" %%A in ('reg query %%K /s /v ExecutablePath 2^>nul ^| findstr /I "ExecutablePath"') do (
+    call :check_python_path "%%B"
+    if defined PYTHON_CMD exit /b 0
+  )
+)
+exit /b 0
+
+:search_python_tree
+if not exist "%~1" exit /b 0
+for /f "delims=" %%P in ('where /r "%~1" python.exe 2^>nul') do (
+  call :check_python_path "%%P"
+  if defined PYTHON_CMD exit /b 0
 )
 exit /b 0
 
 :check_python_path
-if not exist "%~1" exit /b 0
-"%~1" -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >nul 2>&1
-if not errorlevel 1 set PYTHON_CMD="%~1"
+set "PYTHON_CANDIDATE=%~1"
+if not defined PYTHON_CANDIDATE exit /b 0
+if not exist "%PYTHON_CANDIDATE%" exit /b 0
+"%PYTHON_CANDIDATE%" -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >nul 2>&1
+if not errorlevel 1 set PYTHON_CMD="%PYTHON_CANDIDATE%"
 exit /b 0
 
 :install_python
@@ -151,19 +220,29 @@ where winget >nul 2>&1
 if errorlevel 1 goto direct_python_download
 
 call :winget_python Python.Python.3.14
-if not errorlevel 1 exit /b 0
+if not errorlevel 1 (
+  call :find_python_with_retry
+  if not errorlevel 1 exit /b 0
+)
 call :winget_python Python.Python.3.13
-if not errorlevel 1 exit /b 0
+if not errorlevel 1 (
+  call :find_python_with_retry
+  if not errorlevel 1 exit /b 0
+)
 call :winget_python Python.Python.3.12
-if not errorlevel 1 exit /b 0
+if not errorlevel 1 (
+  call :find_python_with_retry
+  if not errorlevel 1 exit /b 0
+)
 
-echo [!] WinGet could not install Python. Falling back to the official Python installer.
+echo [!] WinGet did not expose a usable interpreter. Falling back to the verified official installer.
 goto direct_python_download
 
 :winget_python
-winget install --id %~1 --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements --disable-interactivity >nul 2>&1
+echo [+] Trying WinGet package %~1
+winget install --id %~1 --exact --source winget --scope user --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if not errorlevel 1 exit /b 0
-winget install --id %~1 --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity >nul 2>&1
+winget install --id %~1 --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 exit /b %errorlevel%
 
 :direct_python_download
@@ -180,15 +259,19 @@ if errorlevel 1 (
 )
 
 set "PYTHON_INSTALLER=%TEMP%\python-%PYTHON_BOOTSTRAP_VERSION%-%RANDOM%.exe"
+set "PYTHON_INSTALL_LOG=%TEMP%\imr-intruder-python-install.log"
 set "NATIVE_ARCH=%PROCESSOR_ARCHITECTURE%"
 if defined PROCESSOR_ARCHITEW6432 set "NATIVE_ARCH=%PROCESSOR_ARCHITEW6432%"
+set "PYTHON_TARGET_DIR=%LOCALAPPDATA%\Programs\Python\Python%PYTHON_BOOTSTRAP_TAG%"
 set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_BOOTSTRAP_VERSION%/python-%PYTHON_BOOTSTRAP_VERSION%-amd64.exe"
 set "PYTHON_SHA256=14b3e9a710a3fcf0bd9b55ab6b60412bd91227563f813fc49040cabc0209e0bd"
 if /I "%NATIVE_ARCH%"=="ARM64" (
+  set "PYTHON_TARGET_DIR=%LOCALAPPDATA%\Programs\Python\Python%PYTHON_BOOTSTRAP_TAG%-arm64"
   set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_BOOTSTRAP_VERSION%/python-%PYTHON_BOOTSTRAP_VERSION%-arm64.exe"
   set "PYTHON_SHA256=517412448c44f0583c994723640e208ca82723e340b0cb6a667696ba2eea63fc"
 )
 if /I "%NATIVE_ARCH%"=="x86" (
+  set "PYTHON_TARGET_DIR=%LOCALAPPDATA%\Programs\Python\Python%PYTHON_BOOTSTRAP_TAG%-32"
   set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_BOOTSTRAP_VERSION%/python-%PYTHON_BOOTSTRAP_VERSION%.exe"
   set "PYTHON_SHA256=30e6397e4dda5b128ec8ac2a57016b0ad5491a2bee83921a6006cc0323fc466c"
 )
@@ -207,16 +290,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
-"%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_exe=1 Include_lib=1 Include_pip=1 Include_launcher=1 Include_test=0 Include_doc=0 Shortcuts=0
+"%PYTHON_INSTALLER%" /quiet /log "%PYTHON_INSTALL_LOG%" InstallAllUsers=0 TargetDir="%PYTHON_TARGET_DIR%" PrependPath=1 Include_exe=1 Include_lib=1 Include_dev=1 Include_pip=1 Include_launcher=1 InstallLauncherAllUsers=0 Include_test=0 Include_doc=0 Shortcuts=0
 set "PYTHON_INSTALL_RESULT=%errorlevel%"
 del /q "%PYTHON_INSTALLER%" 2>nul
-if "%PYTHON_INSTALL_RESULT%"=="0" exit /b 0
-if "%PYTHON_INSTALL_RESULT%"=="3010" (
-  echo [!] Python requested a reboot, but installation can continue in the current user session.
-  exit /b 0
+if not "%PYTHON_INSTALL_RESULT%"=="0" if not "%PYTHON_INSTALL_RESULT%"=="3010" (
+  echo [ERROR] The official Python installer failed with exit code %PYTHON_INSTALL_RESULT%.
+  echo [ERROR] Installer log: %PYTHON_INSTALL_LOG%
+  exit /b 1
 )
-echo [ERROR] The official Python installer failed with exit code %PYTHON_INSTALL_RESULT%.
-exit /b 1
+
+call :check_python_path "%PYTHON_TARGET_DIR%\python.exe"
+if defined PYTHON_CMD exit /b 0
+call :find_python_with_retry
+exit /b %errorlevel%
 
 :verify_sha256
 setlocal EnableDelayedExpansion
