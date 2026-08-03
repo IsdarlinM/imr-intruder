@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2
+
+- Fixed Windows Python discovery immediately after automatic installation.
+- Added PEP 514 registry discovery, WinGet package-tree discovery, WindowsApps discovery, PATH refresh, and bounded retries.
+- Added a deterministic `TargetDir` for the verified official Python installer and preserved its diagnostic log.
+- WinGet success is now accepted only after a compatible interpreter is executed successfully.
+
 ## 1.3.1
 
 - Windows installer now prompts to install Python automatically when Python 3.10+ is missing.
