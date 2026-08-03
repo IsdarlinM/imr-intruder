@@ -2,7 +2,7 @@
 
 ## Python requirement
 
-`imr-intruder` requires Python 3.10 or newer. The installers stop before changing the system when the requirement is not met.
+`imr-intruder` requires Python 3.10 or newer. On Windows, `install.cmd` offers to install a supported Python runtime automatically when none is available. On Linux, install Python 3.10+ through the operating system package manager before running the installer.
 
 ## Linux native installer
 
@@ -43,24 +43,33 @@ Run from Command Prompt:
 install.cmd
 ```
 
-Optional source path:
+Optional parameters:
 
 ```cmd
 install.cmd /SOURCE C:\path\to\imr-intruder
+install.cmd /PYTHON C:\Path\To\python.exe
+install.cmd /AUTO-INSTALL-PYTHON
+install.cmd /NO-PYTHON-INSTALL
 ```
+
+When Python 3.10+ is missing, the interactive installer asks for permission before installing Python. `/AUTO-INSTALL-PYTHON` accepts this step for automated deployments. `/NO-PYTHON-INSTALL` preserves fail-fast behavior.
 
 The installer:
 
-1. Detects `py -3` or `python` with Python 3.10+.
-2. Creates an isolated versioned virtual environment.
-3. Installs all dependencies.
-4. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
-5. Updates the user PATH through the registry without truncating it.
-6. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
-7. Broadcasts the Windows environment update.
-8. Validates the installed command with `doctor`.
+1. Detects an existing Python 3.10+ installation, including the launcher and standard per-user/system locations.
+2. If Python is missing, asks whether it should be installed automatically.
+3. Uses WinGet first; if unavailable, downloads the pinned official Python installer from `python.org`.
+4. Verifies the fallback installer with a pinned SHA-256 checksum before execution.
+5. Installs Python per-user with pip, the launcher, and PATH integration enabled.
+6. Creates an isolated versioned virtual environment.
+7. Installs and validates all project dependencies.
+8. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
+9. Updates the user PATH through the registry without truncating it.
+10. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
+11. Broadcasts the Windows environment update.
+12. Validates Python, pip, the installed command, and `doctor` before reporting success.
 
-No PowerShell is required.
+No PowerShell script or administrator privileges are required. The direct-download fallback requires `curl.exe` and `certutil.exe`, both included in supported Windows 10/11 installations.
 
 ## Environment variables
 

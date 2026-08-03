@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.3.0
+imr :: v1.3.1
 ```
 
 ## Requirements
@@ -38,6 +38,18 @@ IMR_INTRUDER_CACHE
 
 ```cmd
 install.cmd
+```
+
+When Python 3.10+ is not detected, the installer asks whether it should install Python automatically. It uses WinGet when available and otherwise downloads a checksum-verified official Python installer. For unattended setup:
+
+```cmd
+install.cmd /AUTO-INSTALL-PYTHON
+```
+
+To disable automatic Python installation:
+
+```cmd
+install.cmd /NO-PYTHON-INSTALL
 ```
 
 Open a new CMD window and verify:

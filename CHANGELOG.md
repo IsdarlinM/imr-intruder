@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1
+
+- Windows installer now prompts to install Python automatically when Python 3.10+ is missing.
+- Added unattended `/AUTO-INSTALL-PYTHON` and opt-out `/NO-PYTHON-INSTALL` modes.
+- Added WinGet installation with official Python installer fallback.
+- Added SHA-256 verification before executing the downloaded Python installer.
+- Added post-install Python, pip, dependency, launcher, PATH, and `doctor` validation.
+
 ## 1.3.0
 
 - Added response normalization, hashes, similarity, clustering, anomaly scoring, match/exclude/extract rules, and response reports.
