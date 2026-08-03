@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3
+
+- Fixed Windows `cmd.exe` "The input line is too long" failures during post-install Python discovery.
+- Removed recursive PATH expansion from Python detection retries.
+- Switched registry, timeout, search, and checksum utilities to explicit System32 paths.
+- Added regression coverage preventing PATH growth in future installers.
+
 ## 1.3.2
 
 - Fixed Windows Python discovery immediately after automatic installation.
