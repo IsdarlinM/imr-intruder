@@ -59,6 +59,34 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIn(value, text)
 
+    def test_windows_installer_discovers_python_after_winget(self):
+        text = (ROOT / "install.cmd").read_text(encoding="utf-8")
+        expected = (
+            "call :find_python_with_retry",
+            "call :refresh_process_path",
+            "call :find_python_registry",
+            r"HKCU\Software\Python",
+            r"%LOCALAPPDATA%\Microsoft\WinGet\Packages",
+            r"%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe",
+            "PYTHON_DETECT_ATTEMPTS=12",
+        )
+        for value in expected:
+            with self.subTest(value=value):
+                self.assertIn(value, text)
+
+    def test_windows_direct_installer_uses_deterministic_target(self):
+        text = (ROOT / "install.cmd").read_text(encoding="utf-8")
+        self.assertIn('TargetDir="%PYTHON_TARGET_DIR%"', text)
+        self.assertIn(r'call :check_python_path "%PYTHON_TARGET_DIR%\python.exe"', text)
+        self.assertIn("imr-intruder-python-install.log", text)
+        self.assertIn("InstallLauncherAllUsers=0", text)
+
+    def test_winget_success_requires_a_runnable_interpreter(self):
+        text = (ROOT / "install.cmd").read_text(encoding="utf-8")
+        winget_section = text.split(":install_python", 1)[1].split(":direct_python_download", 1)[0]
+        self.assertGreaterEqual(winget_section.count("call :find_python_with_retry"), 3)
+        self.assertIn("WinGet did not expose a usable interpreter", winget_section)
+
     def test_windows_python_bootstrap_hashes_are_sha256(self):
         text = (ROOT / "install.cmd").read_text(encoding="utf-8")
         hashes = re.findall(r'set "PYTHON_SHA256=([0-9a-f]+)"', text)
@@ -115,7 +143,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_helper_reads_project_version(self):
         module = load_windows_installer_module()
-        self.assertEqual(module.project_version(ROOT), "1.3.1")
+        self.assertEqual(module.project_version(ROOT), "1.3.2")
 
     def test_python_requirement(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
