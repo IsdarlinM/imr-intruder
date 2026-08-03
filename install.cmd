@@ -118,23 +118,12 @@ exit /b 0
 :find_python_with_retry
 set /a PYTHON_DETECT_ATTEMPT=0
 :find_python_retry
-call :refresh_process_path
 call :find_python
 if defined PYTHON_CMD exit /b 0
 set /a PYTHON_DETECT_ATTEMPT+=1
 if %PYTHON_DETECT_ATTEMPT% GEQ %PYTHON_DETECT_ATTEMPTS% exit /b 1
->nul 2>&1 timeout /t 1 /nobreak
+>nul 2>&1 "%SystemRoot%\System32\timeout.exe" /t 1 /nobreak
 goto find_python_retry
-
-:refresh_process_path
-set "USER_ENV_PATH="
-set "SYSTEM_ENV_PATH="
-for /f "tokens=2,*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "REG_"') do set "USER_ENV_PATH=%%B"
-for /f "tokens=2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul ^| findstr /I "REG_"') do set "SYSTEM_ENV_PATH=%%B"
-if defined SYSTEM_ENV_PATH set "PATH=%SYSTEM_ENV_PATH%;%PATH%"
-if defined USER_ENV_PATH set "PATH=%USER_ENV_PATH%;%PATH%"
-if exist "%LOCALAPPDATA%\Microsoft\WindowsApps" set "PATH=%LOCALAPPDATA%\Microsoft\WindowsApps;%PATH%"
-exit /b 0
 
 :find_python
 set "PYTHON_CMD="
@@ -185,13 +174,13 @@ exit /b 0
 
 :find_python_registry
 for %%K in ("HKCU\Software\Python" "HKLM\Software\Python") do (
-  for /f "tokens=2,*" %%A in ('reg query %%K /s /v ExecutablePath 2^>nul ^| findstr /I "ExecutablePath"') do (
+  for /f "tokens=2,*" %%A in ('%SystemRoot%\System32\reg.exe query %%K /s /v ExecutablePath 2^>nul ^| %SystemRoot%\System32\findstr.exe /I "ExecutablePath"') do (
     call :check_python_path "%%B"
     if defined PYTHON_CMD exit /b 0
   )
 )
 for %%K in ("HKLM\Software\Python" "HKLM\Software\WOW6432Node\Python") do (
-  for /f "tokens=2,*" %%A in ('reg query %%K /s /v ExecutablePath 2^>nul ^| findstr /I "ExecutablePath"') do (
+  for /f "tokens=2,*" %%A in ('%SystemRoot%\System32\reg.exe query %%K /s /v ExecutablePath 2^>nul ^| %SystemRoot%\System32\findstr.exe /I "ExecutablePath"') do (
     call :check_python_path "%%B"
     if defined PYTHON_CMD exit /b 0
   )
@@ -200,7 +189,7 @@ exit /b 0
 
 :search_python_tree
 if not exist "%~1" exit /b 0
-for /f "delims=" %%P in ('where /r "%~1" python.exe 2^>nul') do (
+for /f "delims=" %%P in ('%SystemRoot%\System32\where.exe /r "%~1" python.exe 2^>nul') do (
   call :check_python_path "%%P"
   if defined PYTHON_CMD exit /b 0
 )
@@ -216,7 +205,7 @@ exit /b 0
 
 :install_python
 echo [+] Installing Python %PYTHON_BOOTSTRAP_VERSION% for the current user
-where winget >nul 2>&1
+"%SystemRoot%\System32\where.exe" winget >nul 2>&1
 if errorlevel 1 goto direct_python_download
 
 call :winget_python Python.Python.3.14
@@ -246,13 +235,13 @@ winget install --id %~1 --exact --source winget --silent --accept-package-agreem
 exit /b %errorlevel%
 
 :direct_python_download
-where curl.exe >nul 2>&1
+"%SystemRoot%\System32\where.exe" curl.exe >nul 2>&1
 if errorlevel 1 (
   echo [ERROR] Neither WinGet nor curl.exe is available to install Python automatically.
   echo [ERROR] Install Python 3.10+ from https://www.python.org/downloads/windows/ and rerun install.cmd.
   exit /b 1
 )
-where certutil.exe >nul 2>&1
+"%SystemRoot%\System32\where.exe" certutil.exe >nul 2>&1
 if errorlevel 1 (
   echo [ERROR] certutil.exe is required to verify the Python installer checksum.
   exit /b 1
@@ -307,7 +296,7 @@ exit /b %errorlevel%
 :verify_sha256
 setlocal EnableDelayedExpansion
 set "ACTUAL_HASH="
-for /f "skip=1 tokens=*" %%H in ('certutil -hashfile "%~1" SHA256') do if not defined ACTUAL_HASH set "ACTUAL_HASH=%%H"
+for /f "skip=1 tokens=*" %%H in ('%SystemRoot%\System32\certutil.exe -hashfile "%~1" SHA256') do if not defined ACTUAL_HASH set "ACTUAL_HASH=%%H"
 set "ACTUAL_HASH=!ACTUAL_HASH: =!"
 if /I not "!ACTUAL_HASH!"=="%~2" (
   endlocal
