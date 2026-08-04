@@ -1,6 +1,6 @@
 from __future__ import annotations
 import unittest
-from imr_intruder.intelligence import body_hash, enrich_results, extract_value, normalize_body, rule_matches
+from imr_intruder.intelligence import body_hash, enrich_results, extract_value, normalize_body, rule_matches, validate_rule
 
 
 class IntelligenceTests(unittest.TestCase):
@@ -16,6 +16,15 @@ class IntelligenceTests(unittest.TestCase):
         self.assertTrue(rule_matches(r"regex:user=\d+",result))
         self.assertTrue(rule_matches("header:X-ID=abc",result))
         self.assertEqual(extract_value(r"regex:user=(\d+)",result),"42")
+
+    def test_header_rules_are_case_insensitive(self):
+        result={"body_preview":"","response_headers":{"x-request-id":"abc"}}
+        self.assertTrue(rule_matches("header:X-Request-ID=abc",result))
+        self.assertEqual(extract_value("header:X-Request-ID",result),"abc")
+
+    def test_invalid_regex_is_rejected_before_execution(self):
+        with self.assertRaises(ValueError):
+            validate_rule("regex:(unclosed")
 
     def test_enrichment_clusters(self):
         rows=[{"status":200,"size_bytes":3,"elapsed_ms":10,"body_preview":"abc","content_type":"text/plain","custom":{}},{"status":302,"size_bytes":3,"elapsed_ms":20,"body_preview":"xyz","content_type":"text/plain","custom":{}}]

@@ -3,7 +3,7 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from imr_intruder.core import execute_request, run_requests
+from imr_intruder.core import execute_request, run_requests, write_csv
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -38,6 +38,27 @@ class CoreTests(unittest.TestCase):
         result=execute_request(1,{'url':self.url+'/redirect','follow_redirects':False})
         self.assertEqual(result['status'],302); self.assertEqual(result['location'],'/ok')
 
+    def test_request_diagnostics_and_secret_redaction(self):
+        result=execute_request(1,{"url":self.url+"/post","method":"POST","data":{"username":"alice","password":"secret"}})
+        self.assertEqual(result["status"],201)
+        self.assertEqual(result["outcome"],"http_response")
+        self.assertTrue(result["response_received"])
+        self.assertEqual(result["request_body_summary"]["username"],"alice")
+        self.assertEqual(result["request_body_summary"]["password"],"<REDACTED>")
+        self.assertIn("content-type",{key.lower() for key in result["request_headers"]})
+
+    def test_single_response_has_no_meaningless_comparison(self):
+        result=run_requests([{"url":self.url+"/single"}])[0]
+        self.assertIsNone(result["similarity"])
+        self.assertIsNone(result["cluster"])
+        self.assertIsNone(result["anomaly_score"])
+
+    def test_stale_content_length_is_removed_before_post(self):
+        result=execute_request(1,{"url":self.url+"/post","method":"POST","headers":{"Content-Length":"1"},"data":{"username":"alice"}})
+        self.assertEqual(result["status"],201)
+        self.assertIn("username=alice",result["body_preview"])
+        self.assertIn("Content-Length",result["removed_request_headers"])
+        self.assertNotEqual(result["request_headers"].get("content-length"),"1")
 
     def test_pause_blocks_pending_start(self):
         import time
@@ -48,6 +69,26 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(Handler.hits,before)
         pause.clear(); worker.join(3)
         self.assertEqual(holder[0]['status'],200)
+
+    def test_cancelled_result_has_complete_classification(self):
+        cancel=threading.Event(); cancel.set()
+        result=run_requests([{"url":self.url+"/cancelled"}],cancel_event=cancel)[0]
+        self.assertEqual(result["outcome"],"cancelled")
+        self.assertEqual(result["error_type"],"cancelled")
+        self.assertFalse(result["response_received"])
+        self.assertIsNone(result["similarity"])
+
+    def test_cli_csv_contains_request_diagnostics(self):
+        import tempfile
+        from pathlib import Path
+        result=execute_request(1,{"url":self.url+"/post","method":"POST","data":{"username":"alice"}})
+        with tempfile.TemporaryDirectory() as temp:
+            output=Path(temp)/"results.csv"
+            write_csv(output,[result])
+            header=output.read_text(encoding="utf-8-sig").splitlines()[0]
+        self.assertIn("outcome",header)
+        self.assertIn("error_type",header)
+        self.assertIn("request_size_bytes",header)
 
     def test_concurrent_enrichment(self):
         requests=[{'name':str(i),'url':self.url+f'/ok?i={i}'} for i in range(4)]

@@ -7,6 +7,7 @@ import shlex
 import sys
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import parse_qsl
 
 from rich.console import Console
 from rich.live import Live
@@ -61,6 +62,19 @@ def _parse_key_values(values: Iterable[str], *, header: bool = False) -> dict[st
     return result
 
 
+def _parse_urlencoded_values(values: Iterable[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in values:
+        if "&" in item:
+            pairs = parse_qsl(item, keep_blank_values=True, strict_parsing=False)
+            if not pairs:
+                raise ValueError(f"Invalid URL-encoded value: {item}")
+            result.update((str(key), str(value)) for key, value in pairs)
+        else:
+            result.update(_parse_key_values([item]))
+    return result
+
+
 def _load_json_value(raw: str) -> Any:
     if raw.startswith("@"):
         return json.loads(Path(raw[1:]).read_text(encoding="utf-8"))
@@ -83,10 +97,9 @@ def _payload_maps(items: list[str]) -> dict[str, list[str]]:
 
 def _base_request(args: argparse.Namespace) -> dict[str, Any]:
     headers = _parse_key_values(args.header or [], header=True)
-    params = _parse_key_values(args.param or [])
+    params = _parse_urlencoded_values(args.param or [])
     cookies = _parse_key_values(args.cookie or [])
     request: dict[str, Any] = {
-        "name": args.name or "request-1",
         "method": args.method.upper(),
         "url": args.url,
         "headers": headers,
@@ -97,6 +110,8 @@ def _base_request(args: argparse.Namespace) -> dict[str, Any]:
         "follow_redirects": args.follow_redirects,
         "http2": args.http2,
     }
+    if args.name:
+        request["name"] = args.name
     if args.proxy:
         request["proxy"] = args.proxy
     if args.user:
@@ -105,7 +120,7 @@ def _base_request(args: argparse.Namespace) -> dict[str, Any]:
     if args.json is not None:
         request["json"] = _load_json_value(args.json)
     elif args.data:
-        request["data"] = _parse_key_values(args.data)
+        request["data"] = _parse_urlencoded_values(args.data)
     elif args.body is not None:
         request["body"] = Path(args.body[1:]).read_text(encoding="utf-8") if args.body.startswith("@") else args.body
     if args.form:
@@ -181,7 +196,9 @@ def _run(args: argparse.Namespace, requests: list[dict[str, Any]]) -> list[dict[
         if args.jsonl:
             write_jsonl(Path(args.jsonl), results)
         if args.output_json:
-            Path(args.output_json).write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            output_json = Path(args.output_json).expanduser()
+            output_json.parent.mkdir(parents=True, exist_ok=True)
+            output_json.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return results
     finally:
         if not args.quiet:

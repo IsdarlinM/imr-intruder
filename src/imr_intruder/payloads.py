@@ -111,9 +111,14 @@ def build_requests(
 
     assignments = generate_assignments(payloads, mode=mode, max_requests=max_requests)
     requests: list[dict[str, Any]] = []
+    explicit_name = str(base_request.get("name") or "").strip()
     for index, variables in enumerate(assignments, start=1):
         rendered = render(deepcopy(base_request), variables)
-        rendered.setdefault("name", ",".join(f"{key}={value}" for key, value in variables.items()) or f"request-{index}")
+        generated_name = ",".join(f"{key}={value}" for key, value in variables.items()) or f"request-{index}"
+        if not explicit_name or explicit_name == "request-1":
+            rendered["name"] = generated_name
+        else:
+            rendered["name"] = str(rendered.get("name") or explicit_name)
         rendered["payload_variables"] = variables
         requests.append(rendered)
     return requests

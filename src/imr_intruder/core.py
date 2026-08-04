@@ -13,12 +13,61 @@ from typing import Any, Callable, Iterable
 
 import httpx
 
-from .intelligence import enrich_results, json_path
+from .intelligence import enrich_results, json_path, validate_rule
 from .storage import atomic_json_write, read_json, utc_now
 
 MAX_WORKERS = 32
 DEFAULT_BODY_LIMIT = 1024 * 1024
 _SECRET_HEADERS = {"authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key"}
+_FRAMING_HEADERS = {"content-length", "transfer-encoding"}
+
+_SECRET_FIELD_RE = re.compile(r"(?:pass(?:word)?|secret|token|api[_-]?key|authorization|cookie|session|csrf)", re.I)
+
+
+def _redact_value(value: Any, key: str = "") -> Any:
+    if _SECRET_FIELD_RE.search(key):
+        return "<REDACTED>"
+    if isinstance(value, dict):
+        return {str(item_key): _redact_value(item_value, str(item_key)) for item_key, item_value in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_value(item) for item in value)
+    return value
+
+
+def _request_body_summary(request_cfg: dict[str, Any]) -> Any:
+    if "json" in request_cfg:
+        return _redact_value(request_cfg["json"])
+    if "data" in request_cfg:
+        return _redact_value(request_cfg["data"])
+    if "multipart" in request_cfg:
+        return {str(key): "<FILE>" if str(value).startswith("@") else _redact_value(value, str(key)) for key, value in request_cfg["multipart"].items()}
+    if "body" in request_cfg:
+        raw = str(request_cfg["body"])
+        return f"<raw body: {len(raw.encode('utf-8', errors='replace'))} bytes>"
+    return None
+
+
+def _transport_error_type(exc: Exception) -> str:
+    if isinstance(exc, httpx.ConnectTimeout):
+        return "connect_timeout"
+    if isinstance(exc, httpx.ReadTimeout):
+        return "read_timeout"
+    if isinstance(exc, httpx.ProxyError):
+        return "proxy_error"
+    if isinstance(exc, httpx.ConnectError):
+        text = str(exc).lower()
+        if "name resolution" in text or "getaddrinfo" in text:
+            return "dns_resolution"
+        if "refused" in text:
+            return "connection_refused"
+        return "connect_error"
+    if isinstance(exc, httpx.InvalidURL):
+        return "invalid_url"
+    if isinstance(exc, httpx.TransportError):
+        return "transport_error"
+    return "internal_error"
 
 
 def redact_headers(headers: dict[str, Any]) -> dict[str, str]:
@@ -26,6 +75,18 @@ def redact_headers(headers: dict[str, Any]) -> dict[str, str]:
         str(key): "<REDACTED>" if str(key).lower() in _SECRET_HEADERS else str(value)
         for key, value in headers.items()
     }
+
+
+def prepare_request_headers(headers: dict[str, Any] | None) -> tuple[dict[str, str], list[str]]:
+    cleaned: dict[str, str] = {}
+    removed: list[str] = []
+    for key, value in (headers or {}).items():
+        name = str(key)
+        if name.lower() in _FRAMING_HEADERS:
+            removed.append(name)
+            continue
+        cleaned[name] = str(value)
+    return cleaned, removed
 
 
 def parse_columns(specs: Iterable[str]) -> list[dict[str, str]]:
@@ -39,6 +100,11 @@ def parse_columns(specs: Iterable[str]) -> list[dict[str, str]]:
             raise ValueError(f"Unsupported column source: {source}")
         if source != "literal" and not separator:
             raise ValueError(f"Column requires source:key: {spec}")
+        if source == "regex":
+            try:
+                re.compile(key)
+            except re.error as exc:
+                raise ValueError(f"Invalid column regular expression {key!r}: {exc}") from exc
         columns.append({"name": name.strip(), "source": source, "key": key})
     return columns
 
@@ -102,6 +168,7 @@ def execute_request(
     method = str(request_cfg.get("method", "GET")).upper()
     url = str(request_cfg.get("url", ""))
     started = time.perf_counter()
+    effective_headers, removed_headers = prepare_request_headers(request_cfg.get("headers"))
     result: dict[str, Any] = {
         "index": index,
         "name": name,
@@ -116,13 +183,24 @@ def execute_request(
         "error": "",
         "body_preview": "",
         "response_headers": {},
-        "request_headers": redact_headers(request_cfg.get("headers", {})),
+        "request_headers": redact_headers(effective_headers),
+        "configured_request_headers": redact_headers(request_cfg.get("headers", {})),
+        "removed_request_headers": removed_headers,
+        "final_request_url": url,
+        "request_content_type": "",
+        "request_size_bytes": 0,
+        "request_body_summary": _request_body_summary(request_cfg),
+        "response_received": False,
+        "outcome": "pending",
+        "error_type": "",
         "payload_variables": request_cfg.get("payload_variables", {}),
         "custom": {},
         "timestamp": utc_now(),
     }
     if not url.startswith(("http://", "https://")):
         result["error"] = "URL must begin with http:// or https://"
+        result["error_type"] = "invalid_url"
+        result["outcome"] = "validation_error"
         return result
 
     timeout = float(request_cfg.get("timeout", 15))
@@ -138,7 +216,7 @@ def execute_request(
     kwargs: dict[str, Any] = {
         "method": method,
         "url": url,
-        "headers": request_cfg.get("headers"),
+        "headers": effective_headers,
         "params": request_cfg.get("params"),
         "auth": auth,
     }
@@ -158,6 +236,8 @@ def execute_request(
         for attempt in range(attempts):
             if cancel_event and cancel_event.is_set():
                 result["error"] = "cancelled"
+                result["error_type"] = "cancelled"
+                result["outcome"] = "cancelled"
                 return result
             try:
                 with httpx.Client(
@@ -196,6 +276,12 @@ def execute_request(
                 "body_preview": preview,
                 "body_truncated": len(body) > len(preview_bytes),
                 "response_headers": redact_headers(dict(response.headers)),
+                "request_headers": redact_headers(dict(response.request.headers)),
+                "final_request_url": str(response.request.url),
+                "request_content_type": response.request.headers.get("Content-Type", ""),
+                "request_size_bytes": len(response.request.content or b""),
+                "response_received": True,
+                "outcome": "http_response",
             }
         )
         for column in columns:
@@ -203,6 +289,8 @@ def execute_request(
     except Exception as exc:
         result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
         result["error"] = f"{type(exc).__name__}: {exc}"
+        result["error_type"] = _transport_error_type(exc)
+        result["outcome"] = "transport_error" if isinstance(exc, httpx.TransportError) else "internal_error"
     finally:
         for handle in file_handles:
             handle.close()
@@ -235,6 +323,13 @@ def run_requests(
     extract_rules: dict[str, str] | None = None,
     cluster_threshold: float = 98.0,
 ) -> list[dict[str, Any]]:
+    match_rules = match_rules or []
+    exclude_rules = exclude_rules or []
+    extract_rules = extract_rules or {}
+    for rule in [*match_rules, *exclude_rules, *extract_rules.values()]:
+        validate_rule(rule)
+    if not 0 <= float(cluster_threshold) <= 100:
+        raise ValueError("cluster_threshold must be between 0 and 100.")
     workers = max(1, min(int(workers), MAX_WORKERS))
     completed_before = _checkpoint_completed(checkpoint)
     pending = [(index, cfg) for index, cfg in enumerate(requests_cfg, start=1) if index not in completed_before]
@@ -246,12 +341,18 @@ def run_requests(
         nonlocal last_start
         while pause_event and pause_event.is_set():
             if cancel_event and cancel_event.is_set():
+                effective_headers, removed_headers = prepare_request_headers(cfg.get("headers"))
                 return {
                     "index": index, "name": str(cfg.get("name") or f"request-{index}"),
                     "method": str(cfg.get("method", "GET")).upper(), "url": str(cfg.get("url", "")),
                     "status": None, "size_bytes": 0, "elapsed_ms": 0.0, "content_type": "",
-                    "http_version": "", "location": "", "error": "cancelled", "body_preview": "",
-                    "response_headers": {}, "request_headers": redact_headers(cfg.get("headers", {})),
+                    "http_version": "", "location": "", "error": "cancelled", "error_type": "cancelled",
+                    "outcome": "cancelled", "response_received": False, "body_preview": "",
+                    "response_headers": {}, "request_headers": redact_headers(effective_headers),
+                    "configured_request_headers": redact_headers(cfg.get("headers", {})),
+                    "removed_request_headers": removed_headers, "final_request_url": str(cfg.get("url", "")),
+                    "request_content_type": "", "request_size_bytes": 0,
+                    "request_body_summary": _request_body_summary(cfg),
                     "payload_variables": cfg.get("payload_variables", {}), "custom": {}, "timestamp": utc_now(),
                 }
             time.sleep(0.05)
@@ -306,8 +407,9 @@ def write_csv(path: Path, results: list[dict[str, Any]]) -> None:
     custom_names = sorted({name for item in results for name in item.get("custom", {})})
     fields = [
         "index", "name", "method", "url", "status", "size_bytes", "elapsed_ms", "content_type",
-        "http_version", "location", "similarity", "cluster", "anomaly_score", "matched", "excluded",
-        *custom_names, "error",
+        "http_version", "location", "final_request_url", "request_content_type", "request_size_bytes",
+        "response_received", "outcome", "error_type", "similarity", "cluster", "anomaly_score",
+        "matched", "excluded", *custom_names, "error",
     ]
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -24,19 +25,33 @@ from .webctl import open_ui, serve, start_background, status as web_status, stop
 from .websocket_client import run_websocket
 from .cli_runtime import console, _json_print, _load_json_value, _load_values, _parse_key_values, _run
 
+
+def _parse_session_value(raw: str) -> Any:
+    if raw.startswith("@"):
+        return _load_json_value(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
 def cmd_repeater(args: argparse.Namespace) -> int:
-    requests = load_import(args.kind, Path(args.request_file))
-    for request in requests:
-        request["name"] = request.get("name", "repeater")
-    results: list[dict[str, Any]] = []
-    for _ in range(args.repeat):
-        results.extend(_run(args, requests))
+    imported = load_import(args.kind, Path(args.request_file))
+    requests: list[dict[str, Any]] = []
+    for repetition in range(1, args.repeat + 1):
+        for position, request in enumerate(imported, start=1):
+            item = dict(request)
+            base_name = str(item.get("name") or "repeater")
+            item["name"] = f"{base_name}-r{repetition}" if args.repeat > 1 else base_name
+            requests.append(item)
+    results = _run(args, requests)
     return 1 if any(item.get("error") for item in results) else 0
 
 
 def cmd_import(args: argparse.Namespace) -> int:
     requests = load_import(args.kind, Path(args.input))
-    output = Path(args.output)
+    output = Path(args.output).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps({"requests": requests}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     console.print(f"[green]Imported {len(requests)} request(s) to {output}[/green]")
     return 0
@@ -57,7 +72,7 @@ def cmd_session(args: argparse.Namespace) -> int:
         delete_session(args.name); console.print(f"Deleted session {args.name}")
     elif args.session_action == "set":
         data = load_session(args.name)
-        data[args.key] = _load_json_value(args.value) if args.value.startswith(("{", "[", "@")) else args.value
+        data[args.key] = _parse_session_value(args.value)
         save_session(args.name, data); console.print(f"Updated session {args.name}")
     elif args.session_action == "cookies":
         data = load_session(args.name)
@@ -97,8 +112,11 @@ def cmd_macro(args: argparse.Namespace) -> int:
 
 def cmd_websocket(args: argparse.Namespace) -> int:
     messages = args.message or (_load_values(Path(args.messages_file)) if args.messages_file else [])
-    if not messages: raise ValueError("Provide --message or --messages-file.")
-    _json_print(run_websocket(args.url, messages, args.timeout, _parse_key_values(args.header, header=True))); return 0
+    if not messages:
+        raise ValueError("Provide --message or --messages-file.")
+    results = run_websocket(args.url, messages, args.timeout, _parse_key_values(args.header, header=True))
+    _json_print(results)
+    return 1 if any(item.get("error") for item in results) else 0
 
 
 def cmd_browser(args: argparse.Namespace) -> int:
@@ -127,7 +145,10 @@ def cmd_web(args: argparse.Namespace) -> int:
             return 0
         token = args.token or os.environ.get("IMR_INTRUDER_WEB_TOKEN") or os.urandom(24).hex()
         return serve(args.host, args.port, token, args.allow_remote, args.multiuser, not args.no_browser)
-    if action == "status": _json_print(web_status()); return 0 if web_status().get("running") else 1
+    if action == "status":
+        current = web_status()
+        _json_print(current)
+        return 0 if current.get("running") else 1
     if action == "stop": _json_print(web_stop()); return 0
     if action == "open": console.print(open_ui()); return 0
     raise ValueError(f"Unknown web action: {action}")
@@ -148,13 +169,30 @@ def cmd_update(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     paths = ensure_paths()
+    required_modules = ("httpx", "fastapi", "uvicorn", "jinja2", "rich", "packaging", "websockets")
+    dependencies = {name: importlib.util.find_spec(name) is not None for name in required_modules}
+    writable: dict[str, bool] = {}
+    for key, path in paths.__dict__.items():
+        try:
+            probe = path / ".imr-intruder-write-test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            writable[key] = True
+        except OSError:
+            writable[key] = False
     checks = {
         "version": __version__,
         "python": sys.version.split()[0],
         "python_supported": sys.version_info >= (3, 10),
         "executable": sys.executable,
+        "dependencies": dependencies,
+        "dependencies_ok": all(dependencies.values()),
         "paths": {key: str(value) for key, value in paths.__dict__.items()},
+        "paths_writable": writable,
+        "paths_ok": all(writable.values()),
+        "browser_optional_installed": importlib.util.find_spec("playwright") is not None,
         "environment": {name: os.environ.get(name, "") for name in ("IMR_INTRUDER_HOME", "IMR_INTRUDER_CONFIG", "IMR_INTRUDER_STATE", "IMR_INTRUDER_DATA", "IMR_INTRUDER_CACHE")},
     }
+    checks["ok"] = checks["python_supported"] and checks["dependencies_ok"] and checks["paths_ok"]
     _json_print(checks) if args.json_output else console.print_json(json.dumps(checks))
-    return 0 if checks["python_supported"] else 1
+    return 0 if checks["ok"] else 1

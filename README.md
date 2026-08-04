@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.3.1
+imr :: v1.4.0
 ```
 
 ## Requirements
@@ -40,7 +40,7 @@ IMR_INTRUDER_CACHE
 install.cmd
 ```
 
-When Python 3.10+ is not detected, the installer asks whether it should install Python automatically. It uses WinGet when available and otherwise downloads a checksum-verified official Python installer. For unattended setup:
+When Python 3.10+ is not detected, the installer asks whether it should install Python automatically. It uses WinGet when available, accepts success only after executing the installed interpreter, refreshes the current PATH, searches PEP 514 registry entries, WindowsApps, standard paths, and WinGet package directories, and otherwise downloads a checksum-verified official Python installer into a deterministic per-user directory. For unattended setup:
 
 ```cmd
 install.cmd /AUTO-INSTALL-PYTHON
@@ -122,6 +122,35 @@ imr-intruder intrude \
   --jsonl results.jsonl
 ```
 
+### POST form: vary only the username
+
+Create `users.txt` with one authorized test identity per line, then keep the password and all other fields fixed:
+
+```bash
+imr-intruder intrude \
+  --url 'https://example.test/Pi' \
+  --method POST \
+  --data 'username={{USER}}&password=fixed' \
+  --payload USER=users.txt \
+  --mode sniper \
+  --workers 1 \
+  --delay-ms 500 \
+  --output-json results.json
+```
+
+Both the CLI and web console accept conventional URL-encoded form input (`a=1&b=2`) or one `key=value` pair per line. Modified/replayed requests discard stale `Content-Length` and `Transfer-Encoding` values so the HTTP client recalculates framing correctly.
+
+For JSON:
+
+```bash
+imr-intruder intrude \
+  --url 'https://example.test/Pi' \
+  --method POST \
+  --json '{"username":"{{USER}}","password":"fixed"}' \
+  --payload USER=users.txt \
+  --mode sniper
+```
+
 Supported modes:
 
 - `sniper`
@@ -199,6 +228,10 @@ http://127.0.0.1:7415
 ```
 
 The web console provides live results, payload modes, response intelligence, search, filters, details drawer, pause/resume, cancellation, CSV export, dark/light mode, and responsive mobile layout.
+
+The **Run scan** workflow validates the target locally, creates a job with `POST /api/jobs`, streams NDJSON events from `/api/jobs/{id}/events`, replaces provisional rows with the enriched final snapshot, and enables CSV only for the active job. Form bodies may be entered as either `username={{USER}}&password=fixed` or one field per line. Click a row to inspect the effective request headers, final URL, redacted request body, response headers, preview, outcome, and error classification.
+
+Complete web workflow and control map: [docs/WEB_CONSOLE.md](docs/WEB_CONSOLE.md).
 
 Remote binding requires explicit authorization:
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0
+
+- Fixed POST form scans that incorrectly serialized `username={{USER}}&password=fixed` as one field and caused target endpoints such as `/Pi` to return `400 Bad Request`.
+- Added equivalent URL-encoded parsing to the web console and CLI `--data`/`--param` options.
+- Removed stale `Content-Length` and `Transfer-Encoding` headers before sending modified or replayed requests.
+- Added effective request diagnostics, redacted body summaries, final URL, request size, outcome, and transport-error classification.
+- Reworked the web job lifecycle with validation, status snapshots, enriched final events, pause/resume/cancel state checks, job cleanup, and safer CSV export.
+- Audited and wired every web control: Run scan, tabs, pause/resume, cancel, CSV, filters, theme, result drawer, and close actions.
+- Corrected generated scan names, single-response intelligence, transport-error clustering, case-insensitive header analysis, and report generation when anomaly values are unavailable.
+- Corrected CLI repeater aggregation, typed session values, WebSocket exit codes, output-directory creation, range validation, doctor checks, and web background lifecycle behavior.
+- Added integration coverage for POST `/Pi`, all top-level and nested CLI help flows, web controls, job events, request framing, session/workspace/update flows, and background web start/status/stop.
+
 ## 1.3.3
 
 - Fixed Windows `cmd.exe` "The input line is too long" failures during post-install Python discovery.

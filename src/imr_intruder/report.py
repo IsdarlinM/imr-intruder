@@ -34,8 +34,15 @@ def build_html_report(results: list[dict[str, Any]], output: Path, title: str = 
     safe_results = _redact(results)
     statuses = Counter(str(item.get("status") or "error") for item in safe_results)
     clusters = Counter(str(item.get("cluster") or "-") for item in safe_results)
+    def anomaly_value(row: dict[str, Any]) -> float:
+        value = row.get("anomaly_score")
+        try:
+            return float(value) if value is not None else -1.0
+        except (TypeError, ValueError):
+            return -1.0
+
     rows = []
-    for item in sorted(safe_results, key=lambda row: float(row.get("anomaly_score", 0)), reverse=True):
+    for item in sorted(safe_results, key=anomaly_value, reverse=True):
         rows.append(
             "<tr>"
             f"<td>{html.escape(str(item.get('index', '')))}</td>"

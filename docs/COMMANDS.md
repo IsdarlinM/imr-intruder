@@ -5,16 +5,28 @@ Use `imr-intruder COMMAND --help` for the authoritative option list.
 ## HTTP execution
 
 ### `request`
-Sends one HTTP request with custom method, headers, parameters, cookies, authentication, proxy, JSON/form/raw/multipart body, TLS, redirect, HTTP/2, retries, rate control, custom columns, response rules, and exports.
+Sends one HTTP request with custom method, headers, parameters, cookies, authentication, proxy, JSON/form/raw/multipart body, TLS, redirect, HTTP/2, retries, rate control, custom columns, response rules, and exports. URL-encoded `--param` and `--data` accept either repeated `key=value` options or a conventional `a=1&b=2` string.
 
 ### `intrude`
-Renders named `{{PLACEHOLDER}}` values using sniper, battering-ram, pitchfork, or cluster-bomb modes. `--max-requests` prevents accidental unbounded combinations.
+Renders named `{{PLACEHOLDER}}` values using sniper, battering-ram, pitchfork, or cluster-bomb modes. `--max-requests` prevents accidental unbounded combinations. Generated names identify the active payload assignment, such as `USER=alice`.
+
+POST form example:
+
+```bash
+imr-intruder intrude \
+  --url 'https://example.test/Pi' \
+  --method POST \
+  --data 'username={{USER}}&password=fixed' \
+  --payload USER=users.txt \
+  --mode sniper \
+  --workers 1
+```
 
 ### `batch`
 Executes a JSON object containing a `requests` list.
 
 ### `repeater`
-Imports and repeats raw, cURL, HAR, Burp, or ZAP requests.
+Imports and repeats raw, cURL, HAR, Burp, or ZAP requests in one execution. Repetitions receive stable names such as `repeater-r1`; stale framing headers are removed before transmission.
 
 ## Import
 
@@ -88,7 +100,7 @@ Downloads and safely installs an update without requiring a new clone. Supports 
 ## Diagnostics
 
 ### `doctor`
-Reports Python compatibility, executable, storage paths, and configured environment variables.
+Reports Python compatibility, executable, required dependency availability, storage-path writability, optional browser support, and configured environment variables.
 
 ### `version`
 Prints the installed version.
