@@ -50,26 +50,31 @@ install.cmd /SOURCE C:\path\to\imr-intruder
 install.cmd /PYTHON C:\Path\To\python.exe
 install.cmd /AUTO-INSTALL-PYTHON
 install.cmd /NO-PYTHON-INSTALL
+install.cmd /FORCE-PYTHON-BOOTSTRAP
+install.cmd /NO-WINGET
 ```
 
-When Python 3.10+ is missing, the interactive installer asks for permission before installing Python. `/AUTO-INSTALL-PYTHON` accepts this step for automated deployments. `/NO-PYTHON-INSTALL` preserves fail-fast behavior.
+When Python 3.10+ is missing, the interactive installer asks for permission before installing Python. Before discovery it clears inherited Python, pip, and virtual-environment overrides that can make a valid interpreter fail. It checks commands, launcher paths, PEP 514 `ExecutablePath` and default `InstallPath` values, standard CPython directories, and WinGet package directories. `/AUTO-INSTALL-PYTHON` accepts this step for automated deployments. `/NO-PYTHON-INSTALL` preserves fail-fast behavior. `/FORCE-PYTHON-BOOTSTRAP` ignores existing Python installations so the clean-machine path can be tested. `/NO-WINGET` forces the checksum-verified official-installer path.
+
+The Windows bootstrap is split into three components: `install.cmd` coordinates the flow, `scripts/find_python.cmd` performs read-only interpreter discovery, and `scripts/bootstrap_python.cmd` installs a pinned runtime when discovery fails. This keeps each CMD file small and avoids command-line length growth.
 
 The installer:
 
 1. Detects an existing Python 3.10+ installation, including the launcher and standard per-user/system locations.
 2. If Python is missing, asks whether it should be installed automatically.
-3. Uses WinGet first; if unavailable, downloads the pinned official Python installer from `python.org`.
-4. Verifies the fallback installer with a pinned SHA-256 checksum before execution.
-5. Installs Python per-user with pip, the launcher, and PATH integration enabled.
-6. Creates an isolated versioned virtual environment.
-7. Installs and validates all project dependencies.
-8. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
-9. Updates the user PATH through the registry without truncating it.
-10. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
-11. Broadcasts the Windows environment update.
-12. Validates Python, pip, the installed command, and `doctor` before reporting success.
+3. Uses one WinGet Python 3.13 package when available and validates that the resulting interpreter is runnable.
+4. Downloads the pinned official installer with built-in `curl.exe`, falling back to `certutil.exe` when curl is unavailable.
+5. Verifies the official installer with a pinned SHA-256 checksum before execution.
+6. Installs Python per-user into a deterministic directory with pip enabled, without requiring a global PATH update or the Python launcher.
+7. Creates an isolated versioned virtual environment.
+8. Installs and validates all project dependencies.
+9. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
+10. Updates the user PATH through the registry without truncating it.
+11. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
+12. Broadcasts the Windows environment update.
+13. Validates Python, pip, the installed command, and `doctor` before reporting success.
 
-No PowerShell script or administrator privileges are required. The direct-download fallback requires `curl.exe` and `certutil.exe`, both included in supported Windows 10/11 installations.
+No PowerShell script or administrator privileges are required. The direct-download path requires `certutil.exe` for SHA-256 verification and uses built-in `curl.exe` for download, with `certutil -urlcache` as a download fallback.
 
 ## Environment variables
 

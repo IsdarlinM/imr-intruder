@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.4.0
+imr :: v1.4.1
 ```
 
 ## Requirements
@@ -40,17 +40,20 @@ IMR_INTRUDER_CACHE
 install.cmd
 ```
 
-When Python 3.10+ is not detected, the installer asks whether it should install Python automatically. It uses WinGet when available, accepts success only after executing the installed interpreter, refreshes the current PATH, searches PEP 514 registry entries, WindowsApps, standard paths, and WinGet package directories, and otherwise downloads a checksum-verified official Python installer into a deterministic per-user directory. For unattended setup:
+When Python 3.10+ is not detected, the installer asks whether it should install Python automatically. It first tries WinGet when available, validates the interpreter rather than trusting the package exit code, and falls back to the checksum-verified official CPython installer in a deterministic per-user directory. The bootstrap is split into small discovery and installation helpers, does not mutate PATH while searching, and does not depend on PowerShell.
 
 ```cmd
 install.cmd /AUTO-INSTALL-PYTHON
-```
-
-To disable automatic Python installation:
-
-```cmd
 install.cmd /NO-PYTHON-INSTALL
 ```
+
+Clean-bootstrap and recovery options:
+
+```cmd
+install.cmd /FORCE-PYTHON-BOOTSTRAP /NO-WINGET
+```
+
+`/FORCE-PYTHON-BOOTSTRAP` ignores an existing interpreter and exercises the same download/install path used on a clean Windows machine. `/NO-WINGET` skips WinGet and uses the pinned official installer. These options are also used by the Windows CI regression.
 
 Open a new CMD window and verify:
 
@@ -121,6 +124,7 @@ imr-intruder intrude \
   --csv results.csv \
   --jsonl results.jsonl
 ```
+
 
 ### POST form: vary only the username
 
