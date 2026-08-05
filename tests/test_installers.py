@@ -82,6 +82,9 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("-I -S -c", main)
         self.assertIn(r"%LOCALAPPDATA%\Python", discovery)
         self.assertIn(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages", discovery)
+        self.assertNotIn('pymanager "exec"', discovery)
+        self.assertIn("print(sys.executable)", main)
+        self.assertIn("PYTHON_RUNTIME", main)
 
     def test_discovery_and_cmd_syntax_guards(self):
         discovery = read("scripts/find_python.cmd")
