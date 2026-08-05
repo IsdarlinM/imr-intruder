@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+
+- Fixed post-install discovery when the official Python installer enters maintenance mode or installs to a registered path different from the requested `TargetDir`.
+- Revalidates Python through direct paths, commands, PEP 514 registry entries, Python Install Manager locations, and WinGet package directories after installation.
+- Runs interpreter probes in isolated mode and records failed candidates in the bootstrap log.
+- Registers the selected Python directory and its `Scripts` directory in the user PATH before dependency installation.
+- Keeps Python PATH entries after uninstalling imr-intruder while removing only the application launcher and `IMR_INTRUDER_*` variables.
+- Shields the installed launcher from inherited `PYTHONHOME`, `PYTHONPATH`, pip, and virtual-environment overrides.
+
 ## 1.4.1
 
 - Split the Windows bootstrap into a small `install.cmd`, `scripts/find_python.cmd`, and `scripts/bootstrap_python.cmd` so discovery and installation remain testable and avoid CMD line-length failures.

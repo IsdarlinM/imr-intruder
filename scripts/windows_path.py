@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import ntpath
 import os
 import winreg
 
 ENVIRONMENT = r"Environment"
-VARIABLES = ("IMR_INTRUDER_HOME", "IMR_INTRUDER_CONFIG", "IMR_INTRUDER_STATE", "IMR_INTRUDER_DATA", "IMR_INTRUDER_CACHE")
+VARIABLES = (
+    "IMR_INTRUDER_HOME",
+    "IMR_INTRUDER_CONFIG",
+    "IMR_INTRUDER_STATE",
+    "IMR_INTRUDER_DATA",
+    "IMR_INTRUDER_CACHE",
+)
 
 
 def read_environment() -> dict[str, str]:
@@ -40,6 +47,51 @@ def remove_value(name: str) -> None:
             pass
 
 
+def normalized_path(value: str) -> str:
+    expanded = ntpath.expandvars(value.strip().strip('"'))
+    return ntpath.normcase(ntpath.normpath(expanded))
+
+
+def update_user_path(*, add: list[str], remove: list[str]) -> str:
+    environment = read_environment()
+    current = next(
+        (value for name, value in environment.items() if name.casefold() == "path"),
+        "",
+    )
+    remove_set = {normalized_path(value) for value in remove if value.strip()}
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    for value in add:
+        part = value.strip()
+        if not part:
+            continue
+        normalized = normalized_path(part)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(part)
+
+    for value in current.split(";"):
+        part = value.strip()
+        if not part:
+            continue
+        normalized = normalized_path(part)
+        if normalized in remove_set or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(part)
+
+    result = ";".join(ordered)
+    write_value("Path", result)
+    return result
+
+
+def python_path_entries(executable: str) -> list[str]:
+    home = ntpath.dirname(ntpath.normpath(executable.strip('"')))
+    return [home, ntpath.join(home, "Scripts")]
+
+
 def broadcast() -> None:
     """Best-effort environment refresh; Windows Server Core may not expose user32."""
     try:
@@ -64,33 +116,48 @@ def broadcast() -> None:
         return
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["install", "remove"])
-    parser.add_argument("bin")
-    parser.add_argument("app_home")
-    parser.add_argument("config")
-    parser.add_argument("state")
-    parser.add_argument("data")
-    parser.add_argument("cache")
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="action", required=True)
 
-    environment = read_environment()
-    current = next((value for name, value in environment.items() if name.casefold() == "path"), "")
-    target = os.path.normcase(os.path.normpath(args.bin.strip('"')))
-    parts: list[str] = []
-    seen: set[str] = set()
-    for raw in current.split(";"):
-        part = raw.strip()
-        if not part:
-            continue
-        normalized = os.path.normcase(os.path.normpath(part.strip('"')))
-        if normalized == target or normalized in seen:
-            continue
-        seen.add(normalized)
-        parts.append(part)
+    python = subparsers.add_parser("python")
+    python.add_argument("executable")
+
+    install = subparsers.add_parser("install")
+    install.add_argument("bin")
+    install.add_argument("app_home")
+    install.add_argument("config")
+    install.add_argument("state")
+    install.add_argument("data")
+    install.add_argument("cache")
+    install.add_argument("--python-executable")
+
+    remove = subparsers.add_parser("remove")
+    remove.add_argument("bin")
+    remove.add_argument("app_home")
+    remove.add_argument("config")
+    remove.add_argument("state")
+    remove.add_argument("data")
+    remove.add_argument("cache")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+
+    if args.action == "python":
+        entries = python_path_entries(args.executable)
+        update_user_path(add=entries, remove=[])
+        broadcast()
+        return 0
+
     if args.action == "install":
-        write_value("Path", ";".join([args.bin, *parts]))
+        python_entries = (
+            python_path_entries(args.python_executable)
+            if args.python_executable
+            else []
+        )
+        update_user_path(add=[args.bin, *python_entries], remove=[args.bin])
         values = {
             "IMR_INTRUDER_HOME": args.app_home,
             "IMR_INTRUDER_CONFIG": args.config,
@@ -101,9 +168,12 @@ def main() -> int:
         for name, value in values.items():
             write_value(name, value)
     else:
-        write_value("Path", ";".join(parts))
+        # Uninstall only removes the application launcher. Python was installed
+        # as a separate user runtime and remains available to the user.
+        update_user_path(add=[], remove=[args.bin])
         for name in VARIABLES:
             remove_value(name)
+
     broadcast()
     return 0
 

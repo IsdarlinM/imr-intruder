@@ -193,6 +193,8 @@ def launcher_text(paths: dict[str, Path]) -> str:
         [
             "@echo off",
             "setlocal EnableExtensions DisableDelayedExpansion",
+            'for %%V in (PYTHONHOME PYTHONPATH PYTHONSTARTUP PYTHONUSERBASE PIP_TARGET PIP_PREFIX PIP_USER PIP_REQUIRE_VIRTUALENV VIRTUAL_ENV __PYVENV_LAUNCHER__) do set "%%V="',
+            'set "PYTHONNOUSERSITE=1"',
             f'if not exist "{current_file}" (echo [ERROR] imr-intruder is not installed correctly.& exit /b 1)',
             f'set /p VERSION=<"{current_file}"',
             'if not defined VERSION (echo [ERROR] imr-intruder current-version is empty.& exit /b 1)',
@@ -219,7 +221,13 @@ def application_environment(paths: dict[str, Path], base: dict[str, str]) -> dic
         "IMR_INTRUDER_CACHE": paths["cache"],
     }
     env.update({name: str(value) for name, value in values.items()})
-    env["PATH"] = str(paths["bin"]) + os.pathsep + env.get("PATH", "")
+    host_python = Path(sys.executable).resolve().parent
+    path_entries = [
+        str(paths["bin"]),
+        str(host_python),
+        str(host_python / "Scripts"),
+    ]
+    env["PATH"] = os.pathsep.join([*path_entries, env.get("PATH", "")])
     return env
 
 
@@ -235,6 +243,8 @@ def configure_user_environment(source: Path, paths: dict[str, Path], env: dict[s
             str(paths["state"]),
             str(paths["data"]),
             str(paths["cache"]),
+            "--python-executable",
+            sys.executable,
         ],
         env=env,
     )

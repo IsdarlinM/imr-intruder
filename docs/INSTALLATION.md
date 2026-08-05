@@ -65,14 +65,16 @@ The installer:
 3. Uses one WinGet Python 3.13 package when available and validates that the resulting interpreter is runnable.
 4. Downloads the pinned official installer with built-in `curl.exe`, falling back to `certutil.exe` when curl is unavailable.
 5. Verifies the official installer with a pinned SHA-256 checksum before execution.
-6. Installs Python per-user into a deterministic directory with pip enabled, without requiring a global PATH update or the Python launcher.
+6. Installs Python per-user with pip enabled, then re-discovers the actual runnable interpreter even when the installer enters maintenance mode or ignores the requested `TargetDir`.
 7. Creates an isolated versioned virtual environment.
 8. Installs and validates all project dependencies.
 9. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
-10. Updates the user PATH through the registry without truncating it.
+10. Adds the selected Python directory, its `Scripts` directory, and the imr-intruder launcher directory to the user PATH through the registry without truncating it.
 11. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
 12. Broadcasts the Windows environment update.
-13. Validates Python, pip, the installed command, and `doctor` before reporting success.
+13. Validates Python, pip, the installed command, and `doctor` before reporting success. The application launcher clears inherited `PYTHONHOME`, `PYTHONPATH`, pip, and virtual-environment overrides on every run.
+
+The installer intentionally does **not** create persistent `PYTHONHOME` or `PYTHONPATH` variables. Those variables are not required for a normal CPython installation and commonly make Python and virtual environments unusable when they point to stale directories. Instead, the installer registers only the actual Python runtime directory and its `Scripts` directory in the user `Path`, and the application uses an isolated virtual environment.
 
 No PowerShell script or administrator privileges are required. The direct-download path requires `certutil.exe` for SHA-256 verification and uses built-in `curl.exe` for download, with `certutil -urlcache` as a download fallback.
 

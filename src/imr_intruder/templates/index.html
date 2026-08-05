@@ -50,7 +50,7 @@
           <button class="tab" data-tab="payloads" type="button">Payloads</button>
           <button class="tab" data-tab="analysis" type="button">Analysis</button>
         </div>
-        <div class="tab-content active" data-panel="headers"><textarea id="headers" spellcheck="false" placeholder="User-Agent: imr-intruder/1.4.1&#10;X-Test: {{VALUE}}"></textarea></div>
+        <div class="tab-content active" data-panel="headers"><textarea id="headers" spellcheck="false" placeholder="User-Agent: imr-intruder/1.4.2&#10;X-Test: {{VALUE}}"></textarea></div>
         <div class="tab-content" data-panel="params"><textarea id="params" spellcheck="false" placeholder="page=1&#10;query={{VALUE}}"></textarea></div>
         <div class="tab-content" data-panel="cookies"><textarea id="cookies" spellcheck="false" placeholder="session=research-session"></textarea></div>
         <div class="tab-content" data-panel="body">
@@ -69,7 +69,7 @@
           <label>Columns<textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
           <label>Match rules<textarea id="match" placeholder="text:Welcome&#10;regex:user_id\s*=\s*\d+"></textarea></label>
           <label>Exclude rules<textarea id="exclude" placeholder="text:Invalid credentials"></textarea></label>
-          <label>Extract columns<textarea id="extract" placeholder="csrf=regex:name=\"csrf\" value=\"([^\"]+)\""></textarea></label>
+          <label>Extract columns<textarea id="extract" placeholder="csrf=regex:name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;"></textarea></label>
         </div>
       </div>
 

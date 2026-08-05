@@ -37,7 +37,7 @@ echo   /HELP, /?                   Show this help.
 exit /b 0
 
 :parsed
-for %%F in (scripts\find_python.cmd scripts\bootstrap_python.cmd scripts\install_windows.py) do if not exist "%SOURCE%\%%F" (echo [ERROR] Missing required file: %%F& exit /b 2)
+for %%F in (scripts\find_python.cmd scripts\bootstrap_python.cmd scripts\install_windows.py scripts\windows_path.py) do if not exist "%SOURCE%\%%F" (echo [ERROR] Missing required file: %%F& exit /b 2)
 
 set "PYTHON_EXE="
 set "PYTHON_ARGS="
@@ -56,11 +56,14 @@ if not defined PYTHON_EXE (echo [ERROR] Python bootstrap completed but no runnab
 
 :validate
 echo [+] Validating Python and pip
-"%PYTHON_EXE%" %PYTHON_ARGS% -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >nul 2>&1
+"%PYTHON_EXE%" %PYTHON_ARGS% -I -S -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >nul 2>&1
 if errorlevel 1 (echo [ERROR] Python 3.10 or newer is required.& exit /b 1)
 "%PYTHON_EXE%" %PYTHON_ARGS% -m ensurepip --upgrade >nul 2>&1
 "%PYTHON_EXE%" %PYTHON_ARGS% -m pip --version >nul 2>&1
 if errorlevel 1 (echo [ERROR] Python was found but pip is unavailable.& exit /b 1)
 echo [+] Python detected: "%PYTHON_EXE%" %PYTHON_ARGS%
+echo [+] Registering Python and Scripts in the user PATH
+"%PYTHON_EXE%" %PYTHON_ARGS% "%SOURCE%\scripts\windows_path.py" python "%PYTHON_EXE%"
+if errorlevel 1 (echo [ERROR] Python works, but its user PATH entries could not be registered.& exit /b 1)
 "%PYTHON_EXE%" %PYTHON_ARGS% "%SOURCE%\scripts\install_windows.py" --source "%SOURCE%"
 exit /b %errorlevel%

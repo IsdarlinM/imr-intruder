@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.4.1
+imr :: v1.4.2
 ```
 
 ## Requirements
@@ -61,7 +61,7 @@ Open a new CMD window and verify:
 imr-intruder doctor
 ```
 
-The installer uses a versioned virtual environment under `%LOCALAPPDATA%\Programs\imr-intruder`, installs dependencies, creates a native CMD launcher, updates the user PATH, and sets the same `IMR_INTRUDER_*` variables through the Windows user environment registry.
+The installer uses a versioned virtual environment under `%LOCALAPPDATA%\Programs\imr-intruder`, installs dependencies, creates a native CMD launcher, adds the selected Python directory, its `Scripts` directory, and the launcher directory to the user PATH, and sets the same `IMR_INTRUDER_*` variables through the Windows user environment registry. It does not persist `PYTHONHOME` or `PYTHONPATH`, because stale values for those variables can break Python and virtual environments.
 
 Complete installation details: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
@@ -124,7 +124,6 @@ imr-intruder intrude \
   --csv results.csv \
   --jsonl results.jsonl
 ```
-
 
 ### POST form: vary only the username
 
