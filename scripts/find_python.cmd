@@ -9,7 +9,6 @@ if defined PYTHON_OVERRIDE call :candidate "%PYTHON_OVERRIDE%" ""
 if defined PYTHON_EXE exit /b 0
 
 call :command py "-3"
-call :command pymanager "exec"
 call :command python ""
 call :command python3 ""
 call :command python3.14 ""
