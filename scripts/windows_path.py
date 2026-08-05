@@ -41,13 +41,27 @@ def remove_value(name: str) -> None:
 
 
 def broadcast() -> None:
+    """Best-effort environment refresh; Windows Server Core may not expose user32."""
+    try:
+        user32 = ctypes.windll.user32
+    except (AttributeError, OSError):
+        return
     HWND_BROADCAST = 0xFFFF
     WM_SETTINGCHANGE = 0x001A
     SMTO_ABORTIFHUNG = 0x0002
     result = ctypes.c_ulong()
-    ctypes.windll.user32.SendMessageTimeoutW(
-        HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 5000, ctypes.byref(result)
-    )
+    try:
+        user32.SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            "Environment",
+            SMTO_ABORTIFHUNG,
+            5000,
+            ctypes.byref(result),
+        )
+    except OSError:
+        return
 
 
 def main() -> int:
@@ -61,8 +75,20 @@ def main() -> int:
     parser.add_argument("cache")
     args = parser.parse_args()
 
-    current = read_environment().get("Path", "")
-    parts = [part for part in current.split(";") if part and os.path.normcase(part) != os.path.normcase(args.bin)]
+    environment = read_environment()
+    current = next((value for name, value in environment.items() if name.casefold() == "path"), "")
+    target = os.path.normcase(os.path.normpath(args.bin.strip('"')))
+    parts: list[str] = []
+    seen: set[str] = set()
+    for raw in current.split(";"):
+        part = raw.strip()
+        if not part:
+            continue
+        normalized = os.path.normcase(os.path.normpath(part.strip('"')))
+        if normalized == target or normalized in seen:
+            continue
+        seen.add(normalized)
+        parts.append(part)
     if args.action == "install":
         write_value("Path", ";".join([args.bin, *parts]))
         values = {

@@ -62,9 +62,22 @@ def project_version(source: Path) -> str:
 
 def clean_python_environment() -> dict[str, str]:
     env = dict(os.environ)
-    for name in ("PYTHONPATH", "PYTHONHOME", "PIP_TARGET", "PIP_PREFIX"):
+    for name in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+        "PIP_TARGET",
+        "PIP_PREFIX",
+        "PIP_USER",
+        "PIP_REQUIRE_VIRTUALENV",
+        "VIRTUAL_ENV",
+        "__PYVENV_LAUNCHER__",
+    ):
         env.pop(name, None)
-    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    env["PIP_NO_INPUT"] = "1"
     return env
 
 
@@ -111,12 +124,31 @@ def create_venv(venv: Path, env: dict[str, str]) -> None:
 
 def install_from_index(source: Path, venv: Path, env: dict[str, str]) -> None:
     python = venv_python(venv)
+    common = ["--retries", "5", "--timeout", "60"]
     run(
-        [str(python), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            *common,
+            "--upgrade",
+            "pip",
+            "setuptools",
+            "wheel",
+        ],
         env=env,
     )
     run(
-        [str(python), "-m", "pip", "install", "-r", str(source / "requirements.txt")],
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            *common,
+            "-r",
+            str(source / "requirements.txt"),
+        ],
         env=env,
     )
     run(
@@ -133,49 +165,45 @@ def install_from_index(source: Path, venv: Path, env: dict[str, str]) -> None:
     )
 
 
-def install_from_host(source: Path, venv: Path, env: dict[str, str]) -> None:
-    """Offline fallback: reuse validated host dependencies and copy the package."""
-    python = venv_python(venv)
-    run(
-        [sys.executable, str(source / "scripts" / "link_host_paths.py"), str(python)],
-        env=env,
-    )
-    run([str(python), str(source / "scripts" / "check_dependencies.py")], env=env)
-    destination = site_packages(python, env) / "imr_intruder"
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source / "src" / "imr_intruder", destination)
-
-
 def install_package(source: Path, release_dir: Path, env: dict[str, str]) -> Path:
     venv = release_dir / "venv"
     create_venv(venv, env)
+    log("[+] Installing Python dependencies and imr-intruder")
     try:
-        log("[+] Installing Python dependencies and imr-intruder")
         install_from_index(source, venv, env)
     except InstallationError as exc:
-        log(f"[!] Online package installation failed: {exc}")
-        log("[!] Trying validated dependencies from the host Python runtime")
-        create_venv(venv, env)
-        install_from_host(source, venv, env)
+        raise InstallationError(
+            "Dependency installation failed. Check internet/proxy access and rerun install.cmd. "
+            f"Original error: {exc}"
+        ) from exc
     python = venv_python(venv)
     run([str(python), "-m", "imr_intruder", "version"], env=env)
     return python
 
 
+def _cmd_path(path: Path | str) -> str:
+    return str(path).replace("/", "\\")
+
+
 def launcher_text(paths: dict[str, Path]) -> str:
     app_home = paths["app_home"]
+    current_file = _cmd_path(app_home / "current-version")
+    runtime = _cmd_path(app_home / "releases" / "%VERSION%" / "venv" / "Scripts" / "python.exe")
     return "\r\n".join(
         [
             "@echo off",
-            "setlocal",
-            f'set "IMR_INTRUDER_HOME={app_home}"',
-            f'set "IMR_INTRUDER_CONFIG={paths["config"]}"',
-            f'set "IMR_INTRUDER_STATE={paths["state"]}"',
-            f'set "IMR_INTRUDER_DATA={paths["data"]}"',
-            f'set "IMR_INTRUDER_CACHE={paths["cache"]}"',
-            f'set /p VERSION=<"{app_home / "current-version"}"',
-            f'call "{app_home}\\releases\\%VERSION%\\venv\\Scripts\\python.exe" -m imr_intruder %*',
+            "setlocal EnableExtensions DisableDelayedExpansion",
+            f'if not exist "{current_file}" (echo [ERROR] imr-intruder is not installed correctly.& exit /b 1)',
+            f'set /p VERSION=<"{current_file}"',
+            'if not defined VERSION (echo [ERROR] imr-intruder current-version is empty.& exit /b 1)',
+            f'if not exist "{runtime}" (echo [ERROR] imr-intruder runtime is missing: {runtime}& exit /b 1)',
+            f'set "IMR_INTRUDER_HOME={_cmd_path(app_home)}"',
+            f'set "IMR_INTRUDER_CONFIG={_cmd_path(paths["config"])}"',
+            f'set "IMR_INTRUDER_STATE={_cmd_path(paths["state"])}"',
+            f'set "IMR_INTRUDER_DATA={_cmd_path(paths["data"])}"',
+            f'set "IMR_INTRUDER_CACHE={_cmd_path(paths["cache"])}"',
+            f'call "{runtime}" -m imr_intruder %*',
+            "exit /b %errorlevel%",
             "",
         ]
     )
@@ -251,12 +279,33 @@ def install(source: Path) -> str:
         launcher.write_text(launcher_text(paths), encoding="utf-8", newline="")
         current_file.write_text(version + "\n", encoding="utf-8")
 
+        comspec = os.environ.get("COMSPEC") or str(
+            Path(os.environ.get("SystemRoot", r"C:\\Windows")) / "System32" / "cmd.exe"
+        )
         run(
-            ["cmd.exe", "/d", "/c", str(launcher), "doctor", "--json"],
+            [comspec, "/d", "/c", str(launcher), "doctor", "--json"],
             env=app_env,
         )
         configure_user_environment(source, paths, app_env)
     except Exception:
+        try:
+            run(
+                [
+                    sys.executable,
+                    str(source / "scripts" / "windows_path.py"),
+                    "remove",
+                    str(paths["bin"]),
+                    str(paths["app_home"]),
+                    str(paths["config"]),
+                    str(paths["state"]),
+                    str(paths["data"]),
+                    str(paths["cache"]),
+                ],
+                env=env,
+                check=False,
+            )
+        except Exception:
+            pass
         if release_dir.exists():
             shutil.rmtree(release_dir, ignore_errors=True)
         if backup.exists():

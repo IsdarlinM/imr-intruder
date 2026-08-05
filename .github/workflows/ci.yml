@@ -53,12 +53,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - shell: cmd
-        run: install.cmd
-      - shell: cmd
-        run: "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd doctor --json"
-      - shell: cmd
-        run: "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE"
+      - name: Install with existing Python
+        shell: cmd
+        run: |
+          call install.cmd
+      - name: Validate installed launcher
+        shell: cmd
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" doctor --json
+      - name: Uninstall
+        shell: cmd
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd" /PURGE
 
   windows-bootstrap-regression:
     runs-on: windows-latest
@@ -76,7 +82,49 @@ jobs:
           call install.cmd /NO-PYTHON-INSTALL
       - name: Validate installed launcher
         shell: cmd
-        run: "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd doctor --json"
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" doctor --json
       - name: Remove test installation
         shell: cmd
-        run: "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd /PURGE"
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd" /PURGE
+
+  windows-clean-bootstrap:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap with no usable Python or pip environment
+        shell: cmd
+        run: |
+          set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\Wbem"
+          set "PYTHONHOME=C:\missing-python-home"
+          set "PYTHONPATH=C:\missing-python-path"
+          set "PYTHONSTARTUP=C:\missing-python-startup.py"
+          set "PYTHONUSERBASE=C:\missing-python-userbase"
+          set "PIP_TARGET=C:\missing-pip-target"
+          set "PIP_PREFIX=C:\missing-pip-prefix"
+          set "PIP_USER=1"
+          set "PIP_REQUIRE_VIRTUALENV=1"
+          set "VIRTUAL_ENV=C:\missing-venv"
+          call install.cmd /FORCE-PYTHON-BOOTSTRAP /NO-WINGET
+      - name: Validate installed application
+        shell: cmd
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" version
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" doctor --json
+          "%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd" --help
+      - name: Uninstall application
+        shell: cmd
+        run: |
+          "%LOCALAPPDATA%\Programs\imr-intruder\uninstall.cmd" /PURGE
+      - name: Upload bootstrap logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-clean-bootstrap-logs
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}\imr-intruder-python-bootstrap.log
+            ${{ runner.temp }}\imr-intruder-python-install.log
+            ${{ runner.temp }}\imr-intruder-winget-python.log
