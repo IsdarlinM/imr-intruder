@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+- Split the Windows bootstrap into a small `install.cmd`, `scripts/find_python.cmd`, and `scripts/bootstrap_python.cmd` so discovery and installation remain testable and avoid CMD line-length failures.
+- Added a clean-machine bootstrap path that ignores preinstalled Python, optionally skips WinGet, downloads pinned CPython 3.13.14, verifies SHA-256, installs pip per-user, and then installs all project dependencies.
+- Hardened Python discovery across commands, launcher paths, PEP 514 registry keys, standard installation directories, and WinGet package directories without mutating PATH.
+- Cleared inherited Python, pip, and virtual-environment overrides before discovery and installation.
+- Added explicit handling and logs for WinGet failures, checksum errors, installer policy error 1625, missing pip, dependency failures, rollback, PATH registration, and uninstall cleanup.
+- Corrected the GitHub Actions workflow YAML and added a `windows-clean-bootstrap` job on `windows-2022` that does not use `setup-python` for the installation under test.
+
 ## 1.4.0
 
 - Fixed POST form scans that incorrectly serialized `username={{USER}}&password=fixed` as one field and caused target endpoints such as `/Pi` to return `400 Bad Request`.
