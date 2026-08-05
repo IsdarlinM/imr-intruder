@@ -56,7 +56,7 @@ if not defined PYTHON_EXE (echo [ERROR] Python bootstrap completed but no runnab
 
 :validate
 echo [+] Validating Python and pip
-"%PYTHON_EXE%" %PYTHON_ARGS% -I -S -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >nul 2>&1
+"%PYTHON_EXE%" %PYTHON_ARGS% -I -S -c "import operator,sys; raise SystemExit(not operator.ge(sys.version_info,(3,10)))" >nul 2>&1
 if errorlevel 1 (echo [ERROR] Python 3.10 or newer is required.& exit /b 1)
 rem Resolve launchers such as py.exe to the actual runtime before PATH registration.
 set "PYTHON_RUNTIME_FILE=%TEMP%\imr-intruder-python-runtime-%RANDOM%.txt"

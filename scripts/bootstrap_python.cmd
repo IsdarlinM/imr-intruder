@@ -94,7 +94,7 @@ endlocal& exit /b 0
 :candidate
 if not exist "%~1" exit /b 0
 >>"%BOOT_LOG%" echo Checking installed target: "%~1"
-"%~1" -I -S -c "import sys; raise SystemExit(sys.version_info ^< (3,10))" >>"%BOOT_LOG%" 2>&1
+"%~1" -I -S -c "import operator,sys; raise SystemExit(not operator.ge(sys.version_info,(3,10)))" >>"%BOOT_LOG%" 2>&1
 if errorlevel 1 exit /b 0
 set "PYTHON_EXE=%~1"
 set "PYTHON_ARGS="

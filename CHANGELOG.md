@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.3
+
+- Fixed Windows Python detection rejecting every valid interpreter because CMD passed the caret-escaped token `^<` literally to `python -c`, producing `SyntaxError`.
+- Replaced all CMD version probes with a shell-safe `operator.ge` check that contains no redirection metacharacters.
+- Added regression coverage that compiles the exact probe and rejects future caret-escaped comparison operators.
+- Existing Python installations are now accepted immediately, allowing PATH and application environment registration to complete.
+
 ## 1.4.2
 
 - Fixed post-install discovery when the official Python installer enters maintenance mode or installs to a registered path different from the requested `TargetDir`.
@@ -62,7 +69,7 @@
 - Added multiuser web tokens with viewer/operator/admin roles.
 - Added professional responsive web console with live streaming, filters, details, pause/resume, cancellation, and export.
 - Added native dependency-installing Linux and Windows CMD installers with automatic PATH and environment configuration.
-- Added `check-update` and staged `update` commands that do not require cloning the repository again.
+- Added `check-update` and `staged update` commands that do not require cloning the repository again.
 - Raised the minimum supported Python version to 3.10.
 
 ## 1.1.0

@@ -85,6 +85,11 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('pymanager "exec"', discovery)
         self.assertIn("print(sys.executable)", main)
         self.assertIn("PYTHON_RUNTIME", main)
+        combined = "\n".join((main, discovery, bootstrap))
+        version_probe = "import operator,sys; raise SystemExit(not operator.ge(sys.version_info,(3,10)))"
+        self.assertNotIn("^<", combined)
+        self.assertEqual(4, combined.count(version_probe))
+        compile(version_probe, "<windows-version-probe>", "exec")
 
     def test_discovery_and_cmd_syntax_guards(self):
         discovery = read("scripts/find_python.cmd")
@@ -141,7 +146,7 @@ class InstallerTests(unittest.TestCase):
         ):
             self.assertIn(value, helper)
         self.assertNotIn("install_from_host", helper)
-        self.assertEqual("1.4.2", module.project_version(ROOT))
+        self.assertEqual("1.4.3", module.project_version(ROOT))
         paths = {
             "app_home": Path(r"C:\App"),
             "config": Path(r"C:\Config"),
