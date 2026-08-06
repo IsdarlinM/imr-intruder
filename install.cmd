@@ -37,6 +37,9 @@ echo   /HELP, /?                   Show this help.
 exit /b 0
 
 :parsed
+rem Canonicalize SOURCE so a trailing backslash cannot escape the closing quote
+rem when Windows builds argv for install_windows.py.
+for %%I in ("%SOURCE%\.") do set "SOURCE=%%~fI"
 for %%F in (scripts\find_python.cmd scripts\bootstrap_python.cmd scripts\install_windows.py scripts\windows_path.py) do if not exist "%SOURCE%\%%F" (echo [ERROR] Missing required file: %%F& exit /b 2)
 
 set "PYTHON_EXE="
@@ -75,5 +78,5 @@ echo [+] Python detected: "%PYTHON_EXE%" %PYTHON_ARGS%
 echo [+] Registering Python and Scripts in the user PATH
 "%PYTHON_EXE%" %PYTHON_ARGS% "%SOURCE%\scripts\windows_path.py" python "%PYTHON_EXE%"
 if errorlevel 1 (echo [ERROR] Python works, but its user PATH entries could not be registered.& exit /b 1)
-"%PYTHON_EXE%" %PYTHON_ARGS% "%SOURCE%\scripts\install_windows.py" --source "%SOURCE%"
+"%PYTHON_EXE%" %PYTHON_ARGS% "%SOURCE%\scripts\install_windows.py" --source "%SOURCE%\."
 exit /b %errorlevel%
