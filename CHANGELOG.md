@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.4
+
+- Fixed Windows source-path forwarding when `install.cmd` starts from `%~dp0`, whose trailing backslash could escape the closing quote and deliver a literal trailing `"` to Python.
+- Canonicalizes `SOURCE` before invoking helper scripts and passes `SOURCE\.` to avoid a backslash immediately before the argument-closing quote.
+- Added defensive source normalization in `install_windows.py` so older bootstrap callers with a trailing quote recover safely.
+- Added regression coverage for default and `/SOURCE` paths with trailing separators and for the exact `Invalid source directory: ..."` failure.
+
 ## 1.4.3
 
 - Fixed Windows Python detection rejecting every valid interpreter because CMD passed the caret-escaped token `^<` literally to `python -c`, producing `SyntaxError`.
@@ -69,7 +76,7 @@
 - Added multiuser web tokens with viewer/operator/admin roles.
 - Added professional responsive web console with live streaming, filters, details, pause/resume, cancellation, and export.
 - Added native dependency-installing Linux and Windows CMD installers with automatic PATH and environment configuration.
-- Added `check-update` and `staged update` commands that do not require cloning the repository again.
+- Added `check-update` and staged `update` commands that do not require cloning the repository again.
 - Raised the minimum supported Python version to 3.10.
 
 ## 1.1.0
