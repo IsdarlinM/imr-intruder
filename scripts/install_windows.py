@@ -250,10 +250,21 @@ def configure_user_environment(source: Path, paths: dict[str, Path], env: dict[s
     )
 
 
-def install(source: Path) -> str:
+def normalize_source_path(source: Path | str) -> Path:
+    # A quoted Windows argument ending in a backslash may arrive with a literal
+    # trailing quote (for example C:\\repo\"). Quotes are illegal in Windows
+    # path components, so removing only trailing quote characters is safe and
+    # lets older bootstrap scripts recover instead of reporting a false path.
+    text = os.fspath(source).rstrip('"')
+    if not text:
+        raise InstallationError("Source directory is empty.")
+    return Path(text).resolve()
+
+
+def install(source: Path | str) -> str:
     if sys.version_info < MINIMUM_PYTHON:
         raise InstallationError("Python 3.10 or newer is required.")
-    source = source.resolve()
+    source = normalize_source_path(source)
     if not (source / "pyproject.toml").is_file():
         raise InstallationError(f"Invalid source directory: {source}")
 
