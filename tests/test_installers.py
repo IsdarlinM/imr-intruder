@@ -91,6 +91,20 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(4, combined.count(version_probe))
         compile(version_probe, "<windows-version-probe>", "exec")
 
+    def test_windows_source_path_trailing_backslash_regression(self):
+        main = read("install.cmd")
+        helper_path = ROOT / "scripts" / "install_windows.py"
+        module = load_module("install_windows_source_test", helper_path)
+
+        self.assertIn('for %%I in ("%SOURCE%\\.") do set "SOURCE=%%~fI"', main)
+        self.assertIn('--source "%SOURCE%\\."', main)
+        self.assertNotIn('--source "%SOURCE%"', main)
+
+        expected = ROOT.resolve()
+        malformed = Path(str(ROOT) + '"')
+        self.assertEqual(expected, module.normalize_source_path(malformed))
+        self.assertEqual(expected, module.normalize_source_path(ROOT))
+
     def test_discovery_and_cmd_syntax_guards(self):
         discovery = read("scripts/find_python.cmd")
         self.assertNotRegex(discovery.lower(), r"(?m)^setlocal\b")
@@ -146,7 +160,7 @@ class InstallerTests(unittest.TestCase):
         ):
             self.assertIn(value, helper)
         self.assertNotIn("install_from_host", helper)
-        self.assertEqual("1.4.3", module.project_version(ROOT))
+        self.assertEqual("1.4.4", module.project_version(ROOT))
         paths = {
             "app_home": Path(r"C:\App"),
             "config": Path(r"C:\Config"),
