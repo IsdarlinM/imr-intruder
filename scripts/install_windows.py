@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ntpath
 import os
 import re
 import shutil
@@ -11,6 +12,7 @@ import uuid
 from pathlib import Path
 
 MINIMUM_PYTHON = (3, 10)
+MANAGED_SHIM_MARKER = "rem imr-intruder managed command shim"
 ENV_NAMES = (
     "IMR_INTRUDER_HOME",
     "IMR_INTRUDER_CONFIG",
@@ -211,6 +213,111 @@ def launcher_text(paths: dict[str, Path]) -> str:
     )
 
 
+def _normalize_windows_path(value: str, env: dict[str, str] | None = None) -> str:
+    text = value.strip().strip('"')
+    if env:
+        lookup = {name.casefold(): item for name, item in env.items()}
+        text = re.sub(
+            r"%([^%]+)%",
+            lambda match: lookup.get(match.group(1).casefold(), match.group(0)),
+            text,
+        )
+    return ntpath.normcase(ntpath.normpath(text))
+
+
+def immediate_shim_candidates(env: dict[str, str]) -> list[Path]:
+    local = env.get("LOCALAPPDATA", "").strip()
+    if not local:
+        return []
+    return [
+        Path(local) / "Microsoft" / "WindowsApps",
+        Path(local) / "Microsoft" / "WinGet" / "Links",
+    ]
+
+
+def select_immediate_shim_dir(env: dict[str, str]) -> Path | None:
+    current_path = {
+        _normalize_windows_path(part, env)
+        for part in env.get("PATH", "").split(";")
+        if part.strip()
+    }
+    for candidate in immediate_shim_candidates(env):
+        if _normalize_windows_path(str(candidate), env) not in current_path:
+            continue
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / f".imr-intruder-write-{uuid.uuid4().hex}.tmp"
+            probe.write_text("probe", encoding="utf-8")
+            probe.unlink()
+        except OSError:
+            continue
+        return candidate
+    return None
+
+
+def managed_shim_text(launcher: Path) -> str:
+    return "\r\n".join(
+        [
+            "@echo off",
+            MANAGED_SHIM_MARKER,
+            f'call "{_cmd_path(launcher)}" %*',
+            "exit /b %errorlevel%",
+            "",
+        ]
+    )
+
+
+def install_immediate_command_shim(
+    paths: dict[str, Path], env: dict[str, str]
+) -> Path | None:
+    shim_dir = select_immediate_shim_dir(env)
+    if shim_dir is None:
+        log("[!] Persistent PATH was configured, but no writable directory from the current PATH was available for an immediate command shim.")
+        return None
+
+    shim = shim_dir / "imr-intruder.cmd"
+    old_content = shim.read_bytes() if shim.exists() else None
+    if old_content is not None:
+        try:
+            existing = old_content.decode("utf-8", errors="replace")
+        except Exception:
+            existing = ""
+        if MANAGED_SHIM_MARKER not in existing:
+            log(f"[!] Not overwriting unrelated command already present: {shim}")
+            return None
+
+    temp = shim.with_name(f".{shim.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp.write_text(managed_shim_text(paths["bin"] / "imr-intruder.cmd"), encoding="utf-8", newline="")
+        os.replace(temp, shim)
+        comspec = env.get("COMSPEC") or str(
+            Path(env.get("SystemRoot", r"C:\Windows")) / "System32" / "cmd.exe"
+        )
+        run([comspec, "/d", "/c", "imr-intruder version"], env=env)
+    except Exception as exc:
+        temp.unlink(missing_ok=True)
+        if old_content is None:
+            shim.unlink(missing_ok=True)
+        else:
+            shim.write_bytes(old_content)
+        log(f"[!] Immediate command shim validation failed: {exc}")
+        return None
+
+    (paths["app_home"] / "command-shim-path").write_text(str(shim), encoding="utf-8")
+    return shim
+
+
+def remove_managed_shim(path: Path | None) -> None:
+    if path is None or not path.exists():
+        return
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if MANAGED_SHIM_MARKER in content:
+        path.unlink(missing_ok=True)
+
+
 def application_environment(paths: dict[str, Path], base: dict[str, str]) -> dict[str, str]:
     env = dict(base)
     values = {
@@ -251,10 +358,6 @@ def configure_user_environment(source: Path, paths: dict[str, Path], env: dict[s
 
 
 def normalize_source_path(source: Path | str) -> Path:
-    # A quoted Windows argument ending in a backslash may arrive with a literal
-    # trailing quote (for example C:\\repo\"). Quotes are illegal in Windows
-    # path components, so removing only trailing quote characters is safe and
-    # lets older bootstrap scripts recover instead of reporting a false path.
     text = os.fspath(source).rstrip('"')
     if not text:
         raise InstallationError("Source directory is empty.")
@@ -279,6 +382,7 @@ def install(source: Path | str) -> str:
     old_current = current_file.read_text(encoding="utf-8").strip() if current_file.exists() else None
     old_launcher = launcher.read_bytes() if launcher.exists() else None
     env = clean_python_environment()
+    immediate_shim: Path | None = None
 
     for path in (*paths.values(), releases):
         path.mkdir(parents=True, exist_ok=True)
@@ -308,7 +412,9 @@ def install(source: Path | str) -> str:
             env=app_env,
         )
         configure_user_environment(source, paths, app_env)
+        immediate_shim = install_immediate_command_shim(paths, env)
     except Exception:
+        remove_managed_shim(immediate_shim)
         try:
             run(
                 [
@@ -347,7 +453,12 @@ def install(source: Path | str) -> str:
     log("")
     log(f"[+] imr-intruder v{version} installed successfully.")
     log(f"[+] Python runtime: {sys.executable}")
-    log("[+] Open a new CMD window and run: imr-intruder --help")
+    log(f"[+] Command added permanently to user PATH: {paths['bin']}")
+    if immediate_shim is not None:
+        log(f"[+] Command is available immediately via: {immediate_shim}")
+    else:
+        log("[+] PATH is persistent; open a new terminal if the current shell does not refresh environment changes.")
+    log("[+] Run: imr-intruder --help")
     return version
 
 
