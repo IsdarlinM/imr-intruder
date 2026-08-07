@@ -34,6 +34,14 @@ exit /b 0
 :parsed
 if exist "%BIN_DIR%\imr-intruder.cmd" call "%BIN_DIR%\imr-intruder.cmd" web stop >nul 2>&1
 
+set "COMMAND_SHIM="
+if exist "%APP_HOME%\command-shim-path" set /p COMMAND_SHIM=<"%APP_HOME%\command-shim-path"
+if defined COMMAND_SHIM if exist "%COMMAND_SHIM%" (
+  "%SystemRoot%\System32\findstr.exe" /C:"imr-intruder managed command shim" "%COMMAND_SHIM%" >nul 2>&1
+  if not errorlevel 1 del /q "%COMMAND_SHIM%" 2>nul
+)
+del /q "%APP_HOME%\command-shim-path" 2>nul
+
 set "PYTHON_EXE="
 set "CURRENT_VERSION="
 if exist "%APP_HOME%\current-version" set /p CURRENT_VERSION=<"%APP_HOME%\current-version"
