@@ -146,6 +146,30 @@ class InstallerTests(unittest.TestCase):
         self.assertIn(r"C:\Users\test\AppData\Local\Programs\Python\Python313", result)
         self.assertIn(r"Python313\Scripts", result)
 
+    def test_immediate_command_shim_and_persistent_path_contract(self):
+        helper_path = ROOT / "scripts" / "install_windows.py"
+        module = load_module("install_windows_shim_test", helper_path)
+        helper = read("scripts/install_windows.py")
+        windows_path = read("scripts/windows_path.py")
+        uninstall = read("uninstall.cmd")
+
+        env = {
+            "LOCALAPPDATA": r"C:\Users\test\AppData\Local",
+            "PATH": r"C:\Windows\System32;C:\Users\test\AppData\Local\Microsoft\WindowsApps",
+        }
+        candidates = module.immediate_shim_candidates(env)
+        self.assertEqual(
+            r"C:\Users\test\AppData\Local\Microsoft\WindowsApps",
+            str(candidates[0]).replace("/", "\\"),
+        )
+        shim_text = module.managed_shim_text(Path(r"C:\App\bin\imr-intruder.cmd"))
+        self.assertIn("imr-intruder managed command shim", shim_text)
+        self.assertIn("imr-intruder version", helper)
+        self.assertIn("command-shim-path", helper)
+        self.assertIn('update_user_path(add=[args.bin, *python_entries]', windows_path)
+        self.assertIn("command-shim-path", uninstall)
+        self.assertIn("imr-intruder managed command shim", uninstall)
+
     def test_python_transaction_helper_and_launcher_isolation(self):
         path = ROOT / "scripts" / "install_windows.py"
         module = load_module("install_windows", path)
@@ -160,7 +184,7 @@ class InstallerTests(unittest.TestCase):
         ):
             self.assertIn(value, helper)
         self.assertNotIn("install_from_host", helper)
-        self.assertEqual("1.4.4", module.project_version(ROOT))
+        self.assertEqual("1.4.5", module.project_version(ROOT))
         paths = {
             "app_home": Path(r"C:\App"),
             "config": Path(r"C:\Config"),
