@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.5
+
+- Windows installer now guarantees persistent registration of the imr-intruder launcher directory in the current user's `Path`.
+- Adds a managed `imr-intruder.cmd` shim to an already-active, writable user PATH directory such as `%LOCALAPPDATA%\Microsoft\WindowsApps`, making the command immediately resolvable in existing CMD/PowerShell sessions when WindowsApps is already present in PATH.
+- Verifies the immediate shim by launching `imr-intruder version` without injecting the application bin directory into the probe PATH.
+- Records and removes the managed shim during uninstall, while refusing to overwrite unrelated commands with the same name.
+- Keeps Python runtime and `Scripts` directories in the persistent user PATH without creating `PYTHONHOME` or `PYTHONPATH`.
+
 ## 1.4.4
 
 - Fixed Windows source-path forwarding when `install.cmd` starts from `%~dp0`, whose trailing backslash could escape the closing quote and deliver a literal trailing `"` to Python.
