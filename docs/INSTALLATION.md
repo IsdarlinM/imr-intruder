@@ -70,9 +70,10 @@ The installer:
 8. Installs and validates all project dependencies.
 9. Creates `%LOCALAPPDATA%\Programs\imr-intruder\bin\imr-intruder.cmd`.
 10. Adds the selected Python directory, its `Scripts` directory, and the imr-intruder launcher directory to the user PATH through the registry without truncating it.
-11. Sets `IMR_INTRUDER_HOME`, `CONFIG`, `STATE`, `DATA`, and `CACHE`.
-12. Broadcasts the Windows environment update.
-13. Validates Python, pip, the installed command, and `doctor` before reporting success. The application launcher clears inherited `PYTHONHOME`, `PYTHONPATH`, pip, and virtual-environment overrides on every run.
+11. Creates a managed command shim in an already-active writable user PATH directory (normally `%LOCALAPPDATA%\Microsoft\WindowsApps`, with `%LOCALAPPDATA%\Microsoft\WinGet\Links` as a fallback) and validates `imr-intruder version`. This allows the command to become immediately resolvable in existing CMD/PowerShell sessions when one of those directories is already present in the current PATH.
+12. Sets `IMR_INTRUDER_HOME`, `IMR_INTRUDER_CONFIG`, `IMR_INTRUDER_STATE`, `IMR_INTRUDER_DATA`, and `IMR_INTRUDER_CACHE` persistently for the current user.
+13. Broadcasts the Windows environment update.
+14. Validates Python, pip, the installed command, and `doctor` before reporting success. The application launcher clears inherited `PYTHONHOME`, `PYTHONPATH`, pip, and virtual-environment overrides on every run.
 
 The installer intentionally does **not** create persistent `PYTHONHOME` or `PYTHONPATH` variables. Those variables are not required for a normal CPython installation and commonly make Python and virtual environments unusable when they point to stale directories. Instead, the installer registers only the actual Python runtime directory and its `Scripts` directory in the user `Path`, and the application uses an isolated virtual environment.
 
