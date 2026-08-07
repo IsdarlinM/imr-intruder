@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.4.2
+imr :: v1.4.5
 ```
 
 ## Requirements
@@ -55,13 +55,13 @@ install.cmd /FORCE-PYTHON-BOOTSTRAP /NO-WINGET
 
 `/FORCE-PYTHON-BOOTSTRAP` ignores an existing interpreter and exercises the same download/install path used on a clean Windows machine. `/NO-WINGET` skips WinGet and uses the pinned official installer. These options are also used by the Windows CI regression.
 
-Open a new CMD window and verify:
+After installation, verify directly:
 
 ```cmd
 imr-intruder doctor
 ```
 
-The installer uses a versioned virtual environment under `%LOCALAPPDATA%\Programs\imr-intruder`, installs dependencies, creates a native CMD launcher, adds the selected Python directory, its `Scripts` directory, and the launcher directory to the user PATH, and sets the same `IMR_INTRUDER_*` variables through the Windows user environment registry. It does not persist `PYTHONHOME` or `PYTHONPATH`, because stale values for those variables can break Python and virtual environments.
+The installer uses a versioned virtual environment under `%LOCALAPPDATA%\Programs\imr-intruder`, installs dependencies, creates a native CMD launcher, adds the selected Python directory, its `Scripts` directory, and the launcher directory to the user PATH, and sets the same `IMR_INTRUDER_*` variables through the Windows user environment registry. When an already-active writable PATH directory such as `%LOCALAPPDATA%\Microsoft\WindowsApps` is available, it also creates and verifies a managed command shim so `imr-intruder` can be invoked immediately from the current CMD/PowerShell session. It does not persist `PYTHONHOME` or `PYTHONPATH`, because stale values for those variables can break Python and virtual environments.
 
 Complete installation details: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
