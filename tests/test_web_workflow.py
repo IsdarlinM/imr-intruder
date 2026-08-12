@@ -240,6 +240,8 @@ class WebWorkflowTests(unittest.TestCase):
             'class="execution-column"',
             'id="requestWorkspace"',
             'id="resultsWorkspace"',
+            "/static/app.css?v={{ version }}",
+            "/static/app.js?v={{ version }}",
         ):
             self.assertIn(landmark, html)
         parser = StructureParser()

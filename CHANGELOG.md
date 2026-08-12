@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.4.6
+
 - Rebuilt the web console as a professional application workspace with persistent navigation, a compact command bar, a focused request editor, grouped execution settings, responsive layouts, keyboard-accessible tabs and rows, and a dedicated response-intelligence view.
 - Hardened web jobs with strict integer and URL validation, preflight rule validation, 1 MiB API-body and 64 MiB result-preview budgets, non-destructive event history, and replay cursors.
 - Removed access tokens from the rendered DOM and API query-string authentication; remote bootstrap tokens are exchanged for an HttpOnly same-site cookie.

@@ -186,7 +186,7 @@ class InstallerTests(unittest.TestCase):
         ):
             self.assertIn(value, helper)
         self.assertNotIn("install_from_host", helper)
-        self.assertEqual("1.4.5", module.project_version(ROOT))
+        self.assertEqual("1.4.6", module.project_version(ROOT))
         paths = {
             "app_home": Path(r"C:\App"),
             "config": Path(r"C:\Config"),
