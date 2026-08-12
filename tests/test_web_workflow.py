@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import unittest
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -14,6 +15,21 @@ from fastapi.testclient import TestClient
 from imr_intruder.web import build_web_requests, create_app
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class StructureParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.ids: list[str] = []
+        self.references: list[str] = []
+
+    def handle_starttag(self, _tag, attrs):
+        values = dict(attrs)
+        if values.get("id"):
+            self.ids.append(values["id"])
+        for name in ("aria-controls", "aria-labelledby"):
+            if values.get(name):
+                self.references.extend(values[name].split())
 
 
 class PostHandler(BaseHTTPRequestHandler):
@@ -193,6 +209,7 @@ class WebWorkflowTests(unittest.TestCase):
             "cancelButton",
             "csvLink",
             "themeButton",
+            "sidebarToggle",
             "drawerClose",
             "search",
             "statusFilter",
@@ -210,6 +227,27 @@ class WebWorkflowTests(unittest.TestCase):
         self.assertIn('event.event === "snapshot"', js)
         self.assertIn("validatePayload", js)
         self.assertNotIn("/csv?token=", js)
+
+    def test_professional_workbench_structure_is_accessible(self):
+        html = (ROOT / "src" / "imr_intruder" / "templates" / "index.html").read_text(
+            encoding="utf-8"
+        )
+        for landmark in (
+            'class="app-shell"',
+            'class="sidebar"',
+            'class="command-bar"',
+            'class="workspace-grid"',
+            'class="execution-column"',
+            'id="requestWorkspace"',
+            'id="resultsWorkspace"',
+        ):
+            self.assertIn(landmark, html)
+        parser = StructureParser()
+        parser.feed(html)
+        self.assertEqual(len(parser.ids), len(set(parser.ids)), "HTML IDs must be unique")
+        self.assertFalse(set(parser.references) - set(parser.ids), "ARIA references must resolve")
+        self.assertNotIn("/api/{{VALUE}}", html)
+        self.assertIn("/api/&#123;&#123;VALUE&#125;&#125;", html)
 
 
 if __name__ == "__main__":

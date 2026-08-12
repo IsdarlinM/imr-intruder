@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Rebuilt the web console with a clearer responsive workbench, keyboard-accessible tabs and rows, bounded preview controls, rate and clustering controls, reconnectable event streams, and improved result evidence views.
+- Rebuilt the web console as a professional application workspace with persistent navigation, a compact command bar, a focused request editor, grouped execution settings, responsive layouts, keyboard-accessible tabs and rows, and a dedicated response-intelligence view.
 - Hardened web jobs with strict integer and URL validation, preflight rule validation, 1 MiB API-body and 64 MiB result-preview budgets, non-destructive event history, and replay cursors.
 - Removed access tokens from the rendered DOM and API query-string authentication; remote bootstrap tokens are exchanged for an HttpOnly same-site cookie.
 - Streamed response bodies into bounded previews instead of loading entire responses, preserved all cancellation results, repaired checkpoint resumes, and made multipart retries rewind files safely.

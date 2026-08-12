@@ -15,7 +15,11 @@ const elements = {
   completed: $("completedMetric"), total: $("totalMetric"), interesting: $("interestingMetric"), errors: $("errorMetric"),
   search: $("search"), status: $("statusFilter"), differences: $("differenceOnly"),
   empty: $("emptyState"), table: $("tableWrap"), drawer: $("drawer"), backdrop: $("drawerBackdrop"),
-  drawerContent: $("drawerContent"), drawerClose: $("drawerClose"), copy: $("copyButton")
+  drawerContent: $("drawerContent"), drawerClose: $("drawerClose"), copy: $("copyButton"),
+  stateLabel: document.querySelector("#stateBadge .state-label"), progressText: $("progressText"),
+  live: document.querySelector(".live-indicator"), liveLabel: document.querySelector(".live-label"),
+  sidebarToggle: $("sidebarToggle"), scope: $("scopeChip"), scopeLabel: $("scopeLabel"),
+  breadcrumbTitle: document.querySelector(".breadcrumbs strong")
 };
 
 function numberValue(id) {
@@ -94,8 +98,10 @@ async function api(path, options = {}) {
 }
 
 function setState(text, kind = "") {
-  elements.state.textContent = text;
+  elements.stateLabel.textContent = text;
   elements.state.dataset.kind = kind;
+  elements.live.classList.toggle("running", kind === "running");
+  elements.liveLabel.textContent = kind === "running" ? "Running" : kind === "paused" ? "Paused" : kind === "error" ? "Error" : text === "Completed" ? "Complete" : "Idle";
 }
 
 function closeDrawer() {
@@ -109,6 +115,7 @@ function resetRun() {
   results = []; total = 0; activeJob = null; paused = false; terminalEventSeen = false; lastSequence = 0;
   elements.body.replaceChildren(); elements.progress.style.width = "0%";
   elements.progress.parentElement.setAttribute("aria-valuenow", "0");
+  elements.progressText.textContent = "0%";
   elements.completed.textContent = "0"; elements.total.textContent = "0";
   elements.interesting.textContent = "0"; elements.errors.textContent = "0"; elements.message.textContent = "";
   elements.pause.disabled = true; elements.cancel.disabled = true; elements.pause.textContent = "Pause";
@@ -165,7 +172,9 @@ function updateMetrics() {
   elements.errors.textContent = String(results.filter((item) => item.error).length);
   const percent = total ? Math.min(100, results.length / total * 100) : 0;
   elements.progress.style.width = `${percent}%`;
-  elements.progress.parentElement.setAttribute("aria-valuenow", String(Math.round(percent)));
+  const roundedPercent = Math.round(percent);
+  elements.progressText.textContent = `${roundedPercent}%`;
+  elements.progress.parentElement.setAttribute("aria-valuenow", String(roundedPercent));
 }
 
 function openDrawer(item) {
@@ -263,6 +272,17 @@ function activateTab(button) {
   document.querySelectorAll(".tab-content").forEach((panel) => { const selected = panel.dataset.panel === button.dataset.tab; panel.classList.toggle("active", selected); panel.hidden = !selected; });
 }
 
+function syncRequestMeta() {
+  elements.breadcrumbTitle.textContent = $("requestName").value.trim() || "Untitled request";
+  let ready = false;
+  try {
+    const target = new URL($("url").value.trim());
+    ready = ["http:", "https:"].includes(target.protocol) && Boolean(target.hostname);
+  } catch (_) {}
+  elements.scope.classList.toggle("ready", ready);
+  elements.scopeLabel.textContent = ready ? "Target ready" : "Awaiting target";
+}
+
 document.querySelectorAll(".tab").forEach((button) => {
   button.addEventListener("click", () => activateTab(button));
   button.addEventListener("keydown", (event) => {
@@ -276,6 +296,8 @@ document.querySelectorAll(".tab").forEach((button) => {
 elements.run.addEventListener("click", run);
 elements.pause.addEventListener("click", pauseResume);
 elements.cancel.addEventListener("click", cancel);
+$("requestName").addEventListener("input", syncRequestMeta);
+$("url").addEventListener("input", syncRequestMeta);
 elements.search.addEventListener("input", renderRows);
 elements.status.addEventListener("change", renderRows);
 elements.differences.addEventListener("change", renderRows);
@@ -284,14 +306,40 @@ elements.backdrop.addEventListener("click", closeDrawer);
 elements.copy.addEventListener("click", async () => { await navigator.clipboard.writeText(elements.drawerContent.textContent); elements.copy.textContent = "Copied"; setTimeout(() => { elements.copy.textContent = "Copy JSON"; }, 1200); });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeDrawer();
+  if (event.key === "Escape") { closeDrawer(); document.documentElement.classList.remove("nav-open"); elements.sidebarToggle.setAttribute("aria-expanded", "false"); }
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); run(); }
+  if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) { event.preventDefault(); $("url").focus(); }
+});
+
+elements.sidebarToggle.addEventListener("click", () => {
+  const open = document.documentElement.classList.toggle("nav-open");
+  elements.sidebarToggle.setAttribute("aria-expanded", String(open));
+});
+
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach((link) => link.classList.toggle("active", link === item));
+    document.documentElement.classList.remove("nav-open");
+    elements.sidebarToggle.setAttribute("aria-expanded", "false");
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (!document.documentElement.classList.contains("nav-open")) return;
+  if ($("sidebar").contains(event.target) || elements.sidebarToggle.contains(event.target)) return;
+  document.documentElement.classList.remove("nav-open");
+  elements.sidebarToggle.setAttribute("aria-expanded", "false");
 });
 
 const savedTheme = localStorage.getItem("imr-intruder-theme");
 if (savedTheme === "light") document.documentElement.classList.add("light");
-function updateThemeButton() { $("themeButton").textContent = document.documentElement.classList.contains("light") ? "Dark mode" : "Light mode"; }
+function updateThemeButton() {
+  const light = document.documentElement.classList.contains("light");
+  $("themeLabel").textContent = light ? "Dark" : "Light";
+  $("themeButton").setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+}
 updateThemeButton();
+syncRequestMeta();
 $("themeButton").addEventListener("click", () => {
   document.documentElement.classList.toggle("light");
   localStorage.setItem("imr-intruder-theme", document.documentElement.classList.contains("light") ? "light" : "dark"); updateThemeButton();

@@ -16,7 +16,7 @@ The default listener is `127.0.0.1:7415`. Non-loopback binding requires `--allow
 
 ## Run scan flow
 
-1. **Run scan** collects method, URL, transport options, request components, payloads, and analysis rules.
+1. **Run request** collects method, URL, transport options, request components, payloads, and analysis rules from the request workspace.
 2. Browser-side validation checks the URL, numeric limits, body type, JSON syntax, and placeholder presence.
 3. The browser sends JSON to `POST /api/jobs` using the HttpOnly same-site session cookie established when the page loads; tokens are not exposed in the DOM or accepted in API query strings.
 4. The backend independently validates every field and builds one or more request configurations.
@@ -31,7 +31,8 @@ The API accepts at most 1 MiB of job JSON. Response previews default to 64 KiB e
 
 | Control | Operation |
 |---|---|
-| Run scan | Validates input, creates one job, disables duplicate submission, streams results, and restores controls on completion or error. `Ctrl+Enter` is the keyboard shortcut. |
+| Run request | Validates input, creates one job, disables duplicate submission, streams results, and restores controls on completion or error. `Ctrl+Enter` is the keyboard shortcut. |
+| Workspace navigation | Moves between the request builder and response analysis. On compact screens it becomes an accessible slide-out panel. |
 | Headers tab | One `Name: value` header per line. Framing headers are recorded and removed before transmission. |
 | Parameters tab | Accepts `a=1&b=2` or one `key=value` pair per line. |
 | Cookies tab | Accepts one cookie per line or a conventional semicolon-separated cookie string. |
