@@ -54,8 +54,11 @@ class WebControlTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=False):
                 from imr_intruder.paths import ensure_paths
                 from imr_intruder.storage import atomic_json_write
+
                 paths = ensure_paths()
-                atomic_json_write(paths.web_state, {"pid": os.getpid(), "url": "http://127.0.0.1:1"})
+                atomic_json_write(
+                    paths.web_state, {"pid": os.getpid(), "url": "http://127.0.0.1:1"}
+                )
                 result = stop()
                 self.assertFalse(result["stopped"])
                 self.assertEqual(result["reason"], "stale state removed")

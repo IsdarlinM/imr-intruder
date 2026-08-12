@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
+
+from rich.markup import escape
 
 from . import APP_NAME
 from .cli_actions import console
 from .cli_parser import build_parser
+from .storage import atomic_json_write
 from .webctl import serve
 
 
@@ -18,7 +23,10 @@ def main(argv: list[str] | None = None) -> int:
         hidden.add_argument("--token", required=True)
         hidden.add_argument("--allow-remote", action="store_true")
         hidden.add_argument("--multiuser", action="store_true")
+        hidden.add_argument("--pid-file")
         args = hidden.parse_args(resolved[1:])
+        if args.pid_file:
+            atomic_json_write(Path(args.pid_file), {"pid": os.getpid()})
         return serve(args.host, args.port, args.token, args.allow_remote, args.multiuser, False)
     parser = build_parser()
     args = parser.parse_args(resolved)
@@ -28,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         console.print("[yellow]Interrupted.[/yellow]")
         return 130
     except Exception as exc:
-        console.print(f"[red]ERROR:[/red] {type(exc).__name__}: {exc}")
+        console.print(f"[red]ERROR:[/red] {escape(type(exc).__name__ + ': ' + str(exc))}")
         return 2
 
 

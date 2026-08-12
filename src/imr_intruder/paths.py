@@ -37,6 +37,10 @@ class AppPaths:
     def web_log(self) -> Path:
         return self.state / "web.log"
 
+    @property
+    def web_pid(self) -> Path:
+        return self.state / "web-child.json"
+
 
 def _env_path(name: str, fallback: Path) -> Path:
     raw = os.environ.get(name)

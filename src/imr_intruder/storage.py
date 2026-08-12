@@ -61,7 +61,7 @@ def create_session(name: str, data: dict[str, Any] | None = None) -> Path:
     path = session_path(name)
     if path.exists():
         raise ValueError(f"Session already exists: {name}")
-    payload = {
+    payload: dict[str, Any] = {
         "name": name,
         "created_at": utc_now(),
         "updated_at": utc_now(),
@@ -107,7 +107,15 @@ def create_workspace(name: str) -> Path:
     root = workspace_path(name)
     if root.exists():
         raise ValueError(f"Workspace already exists: {name}")
-    for child in ("requests", "payloads", "sessions", "results", "bodies", "exports", "macros"):
+    for child in (
+        "requests",
+        "payloads",
+        "sessions",
+        "results",
+        "bodies",
+        "exports",
+        "macros",
+    ):
         (root / child).mkdir(parents=True, exist_ok=True)
     atomic_json_write(root / "workspace.json", {"name": name, "created_at": utc_now()})
     return root

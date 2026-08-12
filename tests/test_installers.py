@@ -86,7 +86,9 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("print(sys.executable)", main)
         self.assertIn("PYTHON_RUNTIME", main)
         combined = "\n".join((main, discovery, bootstrap))
-        version_probe = "import operator,sys; raise SystemExit(not operator.ge(sys.version_info,(3,10)))"
+        version_probe = (
+            "import operator,sys; raise SystemExit(not operator.ge(sys.version_info,(3,10)))"
+        )
         self.assertNotIn("^<", combined)
         self.assertEqual(4, combined.count(version_probe))
         compile(version_probe, "<windows-version-probe>", "exec")
@@ -166,7 +168,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("imr-intruder managed command shim", shim_text)
         self.assertIn("imr-intruder version", helper)
         self.assertIn("command-shim-path", helper)
-        self.assertIn('update_user_path(add=[args.bin, *python_entries]', windows_path)
+        self.assertIn("update_user_path(add=[args.bin, *python_entries]", windows_path)
         self.assertIn("command-shim-path", uninstall)
         self.assertIn("imr-intruder managed command shim", uninstall)
 
@@ -224,6 +226,13 @@ class InstallerTests(unittest.TestCase):
             uninstall.index("windows_path.py"),
             uninstall.index('if exist "%APP_HOME%\\releases" rmdir'),
         )
+
+    def test_linux_installer_uses_the_isolated_python(self):
+        installer = read("install.sh")
+        function = installer.split("install_into_venv()", 1)[1].split("printf '[+] Creating", 1)[0]
+        self.assertIn('"$python" -m pip install', function)
+        self.assertNotIn('"$PYTHON" -m pip install', function)
+        self.assertIn("--upgrade pip setuptools wheel", function)
 
 
 if __name__ == "__main__":

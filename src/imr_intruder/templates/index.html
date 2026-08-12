@@ -3,36 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>imr-intruder</title>
+  <meta name="color-scheme" content="dark light">
+  <title>imr-intruder · HTTP workbench</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body data-token="{{ token }}">
+<body>
   <header class="topbar">
-    <div>
-      <h1>imr-intruder</h1>
-      <span class="version">imr :: v{{ version }}</span>
+    <div class="brand" aria-label="imr-intruder">
+      <span class="brand-mark" aria-hidden="true">i</span>
+      <div><h1>imr-intruder</h1><span class="version">HTTP workbench · v{{ version }}</span></div>
     </div>
     <div class="actions">
-      <button id="themeButton" class="ghost" type="button">Theme</button>
-      <button id="runButton" class="primary" type="button">Run scan</button>
+      <button id="themeButton" class="ghost" type="button" aria-label="Switch color theme">Light mode</button>
+      <button id="runButton" class="primary" type="button">Run scan <kbd>Ctrl ↵</kbd></button>
     </div>
   </header>
 
   <main>
-    <section class="panel configuration">
+    <section class="hero" aria-labelledby="page-title">
+      <div><span class="eyebrow">Authorized testing console</span><h2 id="page-title">Build, vary, and inspect HTTP requests.</h2></div>
+      <p>Every request stays explicit. Response previews are bounded, secrets are redacted, and live evidence remains available after reconnecting.</p>
+    </section>
+
+    <section class="panel configuration" aria-labelledby="request-title">
       <div class="section-title">
-        <div><span class="eyebrow">Request builder</span><h2>Target and transport</h2></div>
-        <span id="stateBadge" class="badge">Ready</span>
+        <div><span class="eyebrow">01 · Request builder</span><h2 id="request-title">Target and transport</h2></div>
+        <span id="stateBadge" class="badge" role="status">Ready</span>
       </div>
       <div class="grid request-grid">
+        <label class="name-field">Request name<input id="requestName" placeholder="Login baseline" autocomplete="off"></label>
         <label class="method-field">Method<select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label>
-        <label class="url-field">URL<input id="url" type="url" placeholder="https://example.test/api/{{VALUE}}" autocomplete="off"></label>
-        <label>Workers<input id="workers" type="number" min="1" max="16" value="2"></label>
-        <label>Delay ms<input id="delayMs" type="number" min="0" value="0"></label>
-        <label>Timeout<input id="timeout" type="number" min="0.1" value="15" step="0.1"></label>
-        <label>Retries<input id="retries" type="number" min="0" max="5" value="0"></label>
+        <label class="url-field">Target URL<input id="url" type="url" placeholder="https://example.test/api/&#123;&#123;VALUE&#125;&#125;" autocomplete="off" required></label>
+        <label>Workers<input id="workers" type="number" min="1" max="16" step="1" value="2"></label>
+        <label>Delay · ms<input id="delayMs" type="number" min="0" max="3600000" step="1" value="0"></label>
+        <label>Rate · req/s<input id="rate" type="number" min="0.001" max="10000" step="0.1" placeholder="Unlimited"></label>
+        <label>Timeout · s<input id="timeout" type="number" min="0.1" max="300" value="15" step="0.1"></label>
+        <label>Retries<input id="retries" type="number" min="0" max="5" step="1" value="0"></label>
+        <label>Preview · KiB<input id="bodyLimit" type="number" min="1" max="1024" step="1" value="64"></label>
+        <label>Cluster · %<input id="clusterThreshold" type="number" min="0" max="100" step="0.1" value="98"></label>
       </div>
-      <div class="toggles">
+      <div class="toggles" aria-label="Transport options">
         <label><input id="verifyTls" type="checkbox" checked> Verify TLS</label>
         <label><input id="followRedirects" type="checkbox"> Follow redirects</label>
         <label><input id="http2" type="checkbox"> HTTP/2</label>
@@ -42,74 +52,73 @@
 
     <section class="editor-layout">
       <div class="panel editor-panel">
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="headers" type="button">Headers</button>
-          <button class="tab" data-tab="params" type="button">Parameters</button>
-          <button class="tab" data-tab="cookies" type="button">Cookies</button>
-          <button class="tab" data-tab="body" type="button">Body</button>
-          <button class="tab" data-tab="payloads" type="button">Payloads</button>
-          <button class="tab" data-tab="analysis" type="button">Analysis</button>
+        <div class="tabs" role="tablist" aria-label="Request configuration">
+          <button id="tab-headers" class="tab active" data-tab="headers" role="tab" aria-selected="true" aria-controls="panel-headers" type="button">Headers</button>
+          <button id="tab-params" class="tab" data-tab="params" role="tab" aria-selected="false" aria-controls="panel-params" type="button" tabindex="-1">Parameters</button>
+          <button id="tab-cookies" class="tab" data-tab="cookies" role="tab" aria-selected="false" aria-controls="panel-cookies" type="button" tabindex="-1">Cookies</button>
+          <button id="tab-body" class="tab" data-tab="body" role="tab" aria-selected="false" aria-controls="panel-body" type="button" tabindex="-1">Body</button>
+          <button id="tab-payloads" class="tab" data-tab="payloads" role="tab" aria-selected="false" aria-controls="panel-payloads" type="button" tabindex="-1">Payloads</button>
+          <button id="tab-analysis" class="tab" data-tab="analysis" role="tab" aria-selected="false" aria-controls="panel-analysis" type="button" tabindex="-1">Analysis</button>
         </div>
-        <div class="tab-content active" data-panel="headers"><textarea id="headers" spellcheck="false" placeholder="User-Agent: imr-intruder/1.4.5&#10;X-Test: {{VALUE}}"></textarea></div>
-        <div class="tab-content" data-panel="params"><textarea id="params" spellcheck="false" placeholder="page=1&#10;query={{VALUE}}"></textarea></div>
-        <div class="tab-content" data-panel="cookies"><textarea id="cookies" spellcheck="false" placeholder="session=research-session"></textarea></div>
-        <div class="tab-content" data-panel="body">
+        <div id="panel-headers" class="tab-content active" data-panel="headers" role="tabpanel" aria-labelledby="tab-headers"><textarea id="headers" spellcheck="false" aria-label="Request headers" placeholder="User-Agent: imr-intruder/{{ version }}&#10;X-Test: &#123;&#123;VALUE&#125;&#125;"></textarea></div>
+        <div id="panel-params" class="tab-content" data-panel="params" role="tabpanel" aria-labelledby="tab-params" hidden><textarea id="params" spellcheck="false" aria-label="Query parameters" placeholder="page=1&#10;query=&#123;&#123;VALUE&#125;&#125;"></textarea></div>
+        <div id="panel-cookies" class="tab-content" data-panel="cookies" role="tabpanel" aria-labelledby="tab-cookies" hidden><textarea id="cookies" spellcheck="false" aria-label="Cookies" placeholder="session=research-session"></textarea></div>
+        <div id="panel-body" class="tab-content" data-panel="body" role="tabpanel" aria-labelledby="tab-body" hidden>
           <label>Body type<select id="bodyType"><option value="none">None</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw</option></select></label>
-          <textarea id="body" spellcheck="false" placeholder='{"value":"{{VALUE}}"}'></textarea>
+          <textarea id="body" spellcheck="false" aria-label="Request body" placeholder='{&quot;value&quot;:&quot;&#123;&#123;VALUE&#125;&#125;&quot;}'></textarea>
         </div>
-        <div class="tab-content" data-panel="payloads">
+        <div id="panel-payloads" class="tab-content" data-panel="payloads" role="tabpanel" aria-labelledby="tab-payloads" hidden>
           <div class="grid payload-controls">
             <label>Mode<select id="mode"><option value="sniper">Sniper</option><option value="battering-ram">Battering ram</option><option value="pitchfork">Pitchfork</option><option value="cluster-bomb">Cluster bomb</option></select></label>
-            <label>Maximum requests<input id="maxRequests" type="number" min="1" max="10000" value="2000"></label>
+            <label>Maximum requests<input id="maxRequests" type="number" min="1" max="10000" step="1" value="2000"></label>
           </div>
-          <p class="hint">One value per line. For multiple placeholders, use sections such as <code>[USER]</code> and <code>[TOKEN]</code>.</p>
-          <textarea id="payloads" spellcheck="false" placeholder="alpha&#10;beta&#10;gamma"></textarea>
+          <p class="hint">One value per line. For named placeholders, add sections such as <code>[USER]</code> and <code>[TOKEN]</code>.</p>
+          <textarea id="payloads" spellcheck="false" aria-label="Payload values" placeholder="alpha&#10;beta&#10;gamma"></textarea>
         </div>
-        <div class="tab-content analysis-grid" data-panel="analysis">
-          <label>Columns<textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
+        <div id="panel-analysis" class="tab-content analysis-grid" data-panel="analysis" role="tabpanel" aria-labelledby="tab-analysis" hidden>
+          <label>Response columns<textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
           <label>Match rules<textarea id="match" placeholder="text:Welcome&#10;regex:user_id\s*=\s*\d+"></textarea></label>
           <label>Exclude rules<textarea id="exclude" placeholder="text:Invalid credentials"></textarea></label>
-          <label>Extract columns<textarea id="extract" placeholder="csrf=regex:name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;"></textarea></label>
+          <label>Extract fields<textarea id="extract" placeholder="csrf=regex:name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;"></textarea></label>
         </div>
       </div>
 
-      <aside class="panel run-panel">
-        <h2>Run control</h2>
-        <div class="progress-track"><div id="progressBar"></div></div>
+      <aside class="panel run-panel" aria-labelledby="run-title">
+        <div class="run-heading"><span class="eyebrow">02 · Execution</span><h2 id="run-title">Run control</h2></div>
+        <div class="progress-track" role="progressbar" aria-label="Job progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar"></div></div>
         <div class="metrics">
+          <div><span>Total</span><strong id="totalMetric">0</strong></div>
           <div><span>Completed</span><strong id="completedMetric">0</strong></div>
           <div><span>Interesting</span><strong id="interestingMetric">0</strong></div>
           <div><span>Errors</span><strong id="errorMetric">0</strong></div>
         </div>
-        <button id="pauseButton" type="button" disabled>Pause</button>
-        <button id="cancelButton" class="danger" type="button" disabled>Cancel</button>
-        <a id="csvLink" class="button-link disabled" href="#">Export CSV</a>
-        <div id="message" class="message" aria-live="polite"></div>
+        <div class="control-grid"><button id="pauseButton" type="button" disabled>Pause</button><button id="cancelButton" class="danger" type="button" disabled>Cancel</button></div>
+        <a id="csvLink" class="button-link disabled" href="#" aria-disabled="true">Export CSV</a>
+        <div id="message" class="message" role="alert" aria-live="polite"></div>
       </aside>
     </section>
 
-    <section class="panel results-panel">
+    <section class="panel results-panel" aria-labelledby="results-title">
       <div class="section-title results-title">
-        <div><span class="eyebrow">Response intelligence</span><h2>Live results</h2></div>
-        <div class="filters">
-          <input id="search" type="search" placeholder="Filter rows">
-          <select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option><option value="error">Errors</option></select>
+        <div><span class="eyebrow">03 · Response intelligence</span><h2 id="results-title">Live results</h2></div>
+        <div class="filters" aria-label="Result filters">
+          <label class="sr-only" for="search">Filter rows</label><input id="search" type="search" placeholder="Filter rows…">
+          <label class="sr-only" for="statusFilter">Status group</label><select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option><option value="error">Errors</option></select>
           <label><input id="differenceOnly" type="checkbox"> Differences only</label>
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Name</th><th>Method</th><th>Status</th><th>Bytes</th><th>Time</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead>
-          <tbody id="resultsBody"></tbody>
-        </table>
+      <div id="emptyState" class="empty-state"><span aria-hidden="true">⌁</span><strong>No responses yet</strong><p>Configure an authorized target, then run a scan. Results stream into this table.</p></div>
+      <div id="tableWrap" class="table-wrap" hidden>
+        <table><thead><tr><th>#</th><th>Name</th><th>Method</th><th>Status</th><th>Bytes</th><th>Time</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead><tbody id="resultsBody"></tbody></table>
       </div>
     </section>
   </main>
 
-  <div id="drawer" class="drawer" aria-hidden="true">
-    <div class="drawer-header"><h2>Response details</h2><button id="drawerClose" type="button">Close</button></div>
-    <pre id="drawerContent"></pre>
-  </div>
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="drawerTitle" role="dialog" aria-modal="true">
+    <div class="drawer-header"><div><span class="eyebrow">Evidence</span><h2 id="drawerTitle">Response details</h2></div><div><button id="copyButton" class="ghost" type="button">Copy JSON</button><button id="drawerClose" type="button">Close</button></div></div>
+    <pre id="drawerContent" tabindex="0"></pre>
+  </aside>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

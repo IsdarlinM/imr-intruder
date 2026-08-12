@@ -38,7 +38,7 @@ import burp
 import zap
 ```
 
-Output is a batch-compatible JSON file.
+Output is a batch-compatible JSON file. The cURL importer accepts request/header/data/form options in any position, inline long and common short values, cookies, basic auth, proxies, redirects, TLS mode, timeouts, retries, JSON, GET query data, and HTTP/2. Unknown or incomplete options fail explicitly instead of being mistaken for the target URL.
 
 ## State
 

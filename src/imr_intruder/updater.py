@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import os
 import re
-import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -38,7 +35,10 @@ class UpdateInfo:
 
 
 def _headers(token: str | None = None) -> dict[str, str]:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": f"imr-intruder/{__version__}"}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"imr-intruder/{__version__}",
+    }
     token = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("IMR_INTRUDER_GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -63,7 +63,9 @@ def check_update(
     channel = channel.lower()
     if channel == "release":
         try:
-            data = _request_json(f"https://api.github.com/repos/{repository}/releases/latest", token)
+            data = _request_json(
+                f"https://api.github.com/repos/{repository}/releases/latest", token
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return check_update(repository, "main", token)
@@ -145,7 +147,13 @@ def _download(url: str, token: str | None = None) -> tuple[bytes, str]:
 
 def _clean_env() -> dict[str, str]:
     env = dict(os.environ)
-    for key in ("PYTHONPATH", "PYTHONHOME", "PIP_TARGET", "PIP_PREFIX", "PIP_REQUIRE_VIRTUALENV"):
+    for key in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PIP_TARGET",
+        "PIP_PREFIX",
+        "PIP_REQUIRE_VIRTUALENV",
+    ):
         env.pop(key, None)
     return env
 
@@ -157,24 +165,41 @@ def install_update(
     dry_run: bool = False,
 ) -> dict[str, Any]:
     if dry_run:
-        return {"installed": False, "dry_run": True, "latest": info.latest, "url": info.archive_url}
+        return {
+            "installed": False,
+            "dry_run": True,
+            "latest": info.latest,
+            "url": info.archive_url,
+        }
     data, digest = _download(info.archive_url, token)
     with tempfile.TemporaryDirectory(prefix="imr-intruder-update-") as temporary:
         project_root = _safe_extract(data, Path(temporary))
         version_file = project_root / "src" / "imr_intruder" / "__init__.py"
         if not version_file.is_file():
             raise ValueError("Update archive does not contain the package version file.")
-        match = re.search(r'__version__\s*=\s*["\']([^"\']+)', version_file.read_text(encoding="utf-8"))
+        match = re.search(
+            r'__version__\s*=\s*["\']([^"\']+)',
+            version_file.read_text(encoding="utf-8"),
+        )
         if not match:
             raise ValueError("Unable to determine the version in the update archive.")
         archive_version = match.group(1)
         if info.source == "release" and Version(archive_version) != Version(info.latest):
-            raise ValueError(f"Update archive version {archive_version} does not match release {info.latest}.")
+            raise ValueError(
+                f"Update archive version {archive_version} does not match release {info.latest}."
+            )
         if os.name == "nt":
             installer = project_root / "install.cmd"
             if not installer.is_file():
                 raise ValueError("Windows installer is missing from update archive.")
-            command = ["cmd.exe", "/d", "/c", str(installer), "/SOURCE", str(project_root)]
+            command = [
+                "cmd.exe",
+                "/d",
+                "/c",
+                str(installer),
+                "/SOURCE",
+                str(project_root),
+            ]
         else:
             installer = project_root / "install.sh"
             if not installer.is_file():

@@ -25,13 +25,14 @@ The installer:
 1. Detects Python 3.10+.
 2. Reads the application version from the package.
 3. Creates a staging virtual environment.
-4. Installs dependencies from `requirements.txt`.
-5. Installs the project without build isolation downloads.
-6. Falls back to validated host dependencies only when the package index is unavailable.
-7. Runs `version` and `doctor` before activation.
-8. Activates the version under `releases/<version>`.
-9. Creates the launcher in `~/.local/bin`.
-10. Adds a managed environment block to `.profile` and existing Bash/Zsh profiles.
+4. Upgrades pip, setuptools, and wheel inside that environment.
+5. Installs dependencies from `requirements.txt` through the isolated interpreter.
+6. Installs the project without build isolation downloads.
+7. Falls back to validated host dependencies only when the package index is unavailable.
+8. Runs `version` and `doctor` before activation.
+9. Activates the version under `releases/<version>`.
+10. Creates the launcher in `~/.local/bin`.
+11. Adds a managed environment block to `.profile` and existing Bash/Zsh profiles.
 
 The installer never requires root.
 

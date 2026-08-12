@@ -38,7 +38,14 @@ def verify_token(token: str) -> tuple[str, str] | None:
 
 def list_tokens() -> list[dict[str, str]]:
     data: dict[str, Any] = read_json(_file(), default={}) or {}
-    return [{"name": name, "role": record["role"], "created_at": record.get("created_at", "")} for name, record in sorted(data.items())]
+    return [
+        {
+            "name": name,
+            "role": record["role"],
+            "created_at": record.get("created_at", ""),
+        }
+        for name, record in sorted(data.items())
+    ]
 
 
 def revoke_token(name: str) -> None:

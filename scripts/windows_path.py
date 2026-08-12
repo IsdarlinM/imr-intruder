@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ntpath
-import os
 import winreg
 
 ENVIRONMENT = r"Environment"
@@ -153,9 +152,7 @@ def main() -> int:
 
     if args.action == "install":
         python_entries = (
-            python_path_entries(args.python_executable)
-            if args.python_executable
-            else []
+            python_path_entries(args.python_executable) if args.python_executable else []
         )
         update_user_path(add=[args.bin, *python_entries], remove=[args.bin])
         values = {

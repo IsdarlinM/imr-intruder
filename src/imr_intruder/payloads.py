@@ -3,8 +3,9 @@ from __future__ import annotations
 import itertools
 import json
 import re
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from typing import Any, Iterable
+from typing import Any
 
 _TOKEN = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
@@ -47,7 +48,7 @@ def render(value: Any, variables: dict[str, Any]) -> Any:
     return _TOKEN.sub(replace, value)
 
 
-def _normalize_payloads(payloads: dict[str, Iterable[Any]]) -> dict[str, list[Any]]:
+def _normalize_payloads(payloads: Mapping[str, Iterable[Any]]) -> dict[str, list[Any]]:
     normalized = {name: list(values) for name, values in payloads.items()}
     for name, values in normalized.items():
         if not values:
@@ -56,7 +57,7 @@ def _normalize_payloads(payloads: dict[str, Iterable[Any]]) -> dict[str, list[An
 
 
 def generate_assignments(
-    payloads: dict[str, Iterable[Any]],
+    payloads: Mapping[str, Iterable[Any]],
     mode: str = "sniper",
     max_requests: int = 10000,
 ) -> list[dict[str, Any]]:
@@ -100,7 +101,7 @@ def generate_assignments(
 
 def build_requests(
     base_request: dict[str, Any],
-    payloads: dict[str, Iterable[Any]],
+    payloads: Mapping[str, Iterable[Any]],
     mode: str = "sniper",
     max_requests: int = 10000,
 ) -> list[dict[str, Any]]:
@@ -108,17 +109,22 @@ def build_requests(
     missing = required - set(payloads)
     if missing:
         raise ValueError(f"Missing payload lists for: {', '.join(sorted(missing))}")
+    unused = set(payloads) - required
+    if unused:
+        raise ValueError(f"Unused payload lists: {', '.join(sorted(unused))}")
 
     assignments = generate_assignments(payloads, mode=mode, max_requests=max_requests)
     requests: list[dict[str, Any]] = []
     explicit_name = str(base_request.get("name") or "").strip()
     for index, variables in enumerate(assignments, start=1):
         rendered = render(deepcopy(base_request), variables)
-        generated_name = ",".join(f"{key}={value}" for key, value in variables.items()) or f"request-{index}"
+        generated_name = (
+            ",".join(f"{key}={value}" for key, value in variables.items()) or f"request-{index}"
+        )
         if not explicit_name or explicit_name == "request-1":
             rendered["name"] = generated_name
         else:
-            rendered["name"] = str(rendered.get("name") or explicit_name)
+            rendered["name"] = f"{rendered.get('name') or explicit_name} [{generated_name}]"
         rendered["payload_variables"] = variables
         requests.append(rendered)
     return requests

@@ -79,8 +79,9 @@ chmod 700 "$APP_HOME" "$CONFIG_HOME" "$STATE_HOME" "$DATA_HOME" "$CACHE_HOME" 2>
 install_into_venv() {
   local venv="$1"
   local python="$venv/bin/python"
-  env -u PYTHONPATH -u PYTHONHOME -u PIP_TARGET -u PIP_PREFIX "$PYTHON" -m pip install --disable-pip-version-check -r "$SOURCE/requirements.txt" &&
-  env -u PYTHONPATH -u PYTHONHOME -u PIP_TARGET -u PIP_PREFIX "$PYTHON" -m pip install --disable-pip-version-check --no-deps --no-build-isolation "$SOURCE"
+  env -u PYTHONPATH -u PYTHONHOME -u PIP_TARGET -u PIP_PREFIX "$python" -m pip install --disable-pip-version-check --upgrade pip setuptools wheel &&
+  env -u PYTHONPATH -u PYTHONHOME -u PIP_TARGET -u PIP_PREFIX "$python" -m pip install --disable-pip-version-check -r "$SOURCE/requirements.txt" &&
+  env -u PYTHONPATH -u PYTHONHOME -u PIP_TARGET -u PIP_PREFIX "$python" -m pip install --disable-pip-version-check --no-deps --no-build-isolation "$SOURCE"
 }
 
 printf '[+] Creating isolated environment for v%s\n' "$VERSION"

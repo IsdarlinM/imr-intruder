@@ -230,9 +230,9 @@ Default URL:
 http://127.0.0.1:7415
 ```
 
-The web console provides live results, payload modes, response intelligence, search, filters, details drawer, pause/resume, cancellation, CSV export, dark/light mode, and responsive mobile layout.
+The web console provides a responsive HTTP workbench with live results, payload modes, response intelligence, search, filters, an accessible evidence drawer, pause/resume, cancellation, replayable event streams, CSV export, keyboard navigation, and dark/light mode. Rate, response-preview, and clustering controls are available directly in the request builder.
 
-The **Run scan** workflow validates the target locally, creates a job with `POST /api/jobs`, streams NDJSON events from `/api/jobs/{id}/events`, replaces provisional rows with the enriched final snapshot, and enables CSV only for the active job. Form bodies may be entered as either `username={{USER}}&password=fixed` or one field per line. Click a row to inspect the effective request headers, final URL, redacted request body, response headers, preview, outcome, and error classification.
+The **Run scan** workflow validates the target locally, creates a job with `POST /api/jobs`, streams replayable NDJSON events from `/api/jobs/{id}/events?after=<sequence>`, replaces provisional rows with the enriched final snapshot, and enables CSV only for the active job. Form bodies may be entered as either `username={{USER}}&password=fixed` or one field per line. Click a row to inspect the effective request headers, final URL, redacted request body, response headers, preview, outcome, and error classification.
 
 Complete web workflow and control map: [docs/WEB_CONSOLE.md](docs/WEB_CONSOLE.md).
 
@@ -326,8 +326,9 @@ HTML reports redact common authentication headers, cookies, passwords, tokens, a
 - Explicit opt-in for remote binding.
 - Bounded concurrency and payload generation.
 - Safe update archive extraction.
-- Redacted secrets and CSV-injection protection.
-- Response preview size limits.
+- Redacted secret-like fields and sensitive URL parameters; spreadsheet-formula-safe CSV exports.
+- HttpOnly same-site web token cookies; API tokens are never accepted from query strings.
+- Streaming response preview limits plus per-job API-body and memory budgets.
 - Checkpoints for interrupted runs.
 
 See [SECURITY.md](SECURITY.md) and [docs/COMMANDS.md](docs/COMMANDS.md).

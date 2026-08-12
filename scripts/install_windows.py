@@ -47,7 +47,9 @@ def run(
     if check and completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
         suffix = f": {detail}" if detail else ""
-        raise InstallationError(f"Command failed ({completed.returncode}): {' '.join(command)}{suffix}")
+        raise InstallationError(
+            f"Command failed ({completed.returncode}): {' '.join(command)}{suffix}"
+        )
     return completed
 
 
@@ -105,7 +107,11 @@ def venv_python(venv: Path) -> Path:
 
 def site_packages(python: Path, env: dict[str, str]) -> Path:
     completed = run(
-        [str(python), "-c", "import json,site; print(json.dumps(site.getsitepackages()))"],
+        [
+            str(python),
+            "-c",
+            "import json,site; print(json.dumps(site.getsitepackages()))",
+        ],
         env=env,
         capture=True,
     )
@@ -199,7 +205,7 @@ def launcher_text(paths: dict[str, Path]) -> str:
             'set "PYTHONNOUSERSITE=1"',
             f'if not exist "{current_file}" (echo [ERROR] imr-intruder is not installed correctly.& exit /b 1)',
             f'set /p VERSION=<"{current_file}"',
-            'if not defined VERSION (echo [ERROR] imr-intruder current-version is empty.& exit /b 1)',
+            "if not defined VERSION (echo [ERROR] imr-intruder current-version is empty.& exit /b 1)",
             f'if not exist "{runtime}" (echo [ERROR] imr-intruder runtime is missing: {runtime}& exit /b 1)',
             f'set "IMR_INTRUDER_HOME={_cmd_path(app_home)}"',
             f'set "IMR_INTRUDER_CONFIG={_cmd_path(paths["config"])}"',
@@ -267,12 +273,12 @@ def managed_shim_text(launcher: Path) -> str:
     )
 
 
-def install_immediate_command_shim(
-    paths: dict[str, Path], env: dict[str, str]
-) -> Path | None:
+def install_immediate_command_shim(paths: dict[str, Path], env: dict[str, str]) -> Path | None:
     shim_dir = select_immediate_shim_dir(env)
     if shim_dir is None:
-        log("[!] Persistent PATH was configured, but no writable directory from the current PATH was available for an immediate command shim.")
+        log(
+            "[!] Persistent PATH was configured, but no writable directory from the current PATH was available for an immediate command shim."
+        )
         return None
 
     shim = shim_dir / "imr-intruder.cmd"
@@ -288,7 +294,11 @@ def install_immediate_command_shim(
 
     temp = shim.with_name(f".{shim.name}.{uuid.uuid4().hex}.tmp")
     try:
-        temp.write_text(managed_shim_text(paths["bin"] / "imr-intruder.cmd"), encoding="utf-8", newline="")
+        temp.write_text(
+            managed_shim_text(paths["bin"] / "imr-intruder.cmd"),
+            encoding="utf-8",
+            newline="",
+        )
         os.replace(temp, shim)
         comspec = env.get("COMSPEC") or str(
             Path(env.get("SystemRoot", r"C:\Windows")) / "System32" / "cmd.exe"
@@ -379,7 +389,9 @@ def install(source: Path | str) -> str:
     backup = releases / f".backup-{version}-{uuid.uuid4().hex}"
     current_file = app_home / "current-version"
     launcher = paths["bin"] / "imr-intruder.cmd"
-    old_current = current_file.read_text(encoding="utf-8").strip() if current_file.exists() else None
+    old_current = (
+        current_file.read_text(encoding="utf-8").strip() if current_file.exists() else None
+    )
     old_launcher = launcher.read_bytes() if launcher.exists() else None
     env = clean_python_environment()
     immediate_shim: Path | None = None
@@ -457,7 +469,9 @@ def install(source: Path | str) -> str:
     if immediate_shim is not None:
         log(f"[+] Command is available immediately via: {immediate_shim}")
     else:
-        log("[+] PATH is persistent; open a new terminal if the current shell does not refresh environment changes.")
+        log(
+            "[+] PATH is persistent; open a new terminal if the current shell does not refresh environment changes."
+        )
     log("[+] Run: imr-intruder --help")
     return version
 

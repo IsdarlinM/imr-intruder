@@ -34,7 +34,9 @@ def normalize_body(body: str, content_type: str = "") -> str:
 
 
 def body_hash(body: str, content_type: str = "") -> str:
-    return hashlib.sha256(normalize_body(body, content_type).encode("utf-8", errors="replace")).hexdigest()
+    return hashlib.sha256(
+        normalize_body(body, content_type).encode("utf-8", errors="replace")
+    ).hexdigest()
 
 
 def similarity(left: str, right: str) -> float:
@@ -152,21 +154,25 @@ def enrich_results(
     valid = [item for item in results if item.get("status") is not None and not item.get("error")]
     invalid = [item for item in results if item not in valid]
     for result in invalid:
-        result.update({
-            "body_hash": None,
-            "similarity": None,
-            "delta_bytes": None,
-            "matched": False,
-            "excluded": False,
-            "cluster": None,
-            "anomaly_score": None,
-        })
+        result.update(
+            {
+                "body_hash": None,
+                "similarity": None,
+                "delta_bytes": None,
+                "matched": False,
+                "excluded": False,
+                "cluster": None,
+                "anomaly_score": None,
+            }
+        )
 
     if not valid:
         return results
 
     baseline = valid[min(max(baseline_index, 0), len(valid) - 1)]
-    baseline_normalized = normalize_body(baseline.get("body_preview", ""), baseline.get("content_type", ""))
+    baseline_normalized = normalize_body(
+        baseline.get("body_preview", ""), baseline.get("content_type", "")
+    )
     compare = len(valid) > 1
     clusters: list[tuple[str, str]] = []
 
@@ -174,8 +180,12 @@ def enrich_results(
         normalized = normalize_body(result.get("body_preview", ""), result.get("content_type", ""))
         result["body_hash"] = hashlib.sha256(normalized.encode()).hexdigest()
         result["similarity"] = similarity(baseline_normalized, normalized) if compare else None
-        result["delta_bytes"] = result.get("size_bytes", 0) - baseline.get("size_bytes", 0) if compare else None
-        result["matched"] = all(rule_matches(rule, result) for rule in match_rules) if match_rules else False
+        result["delta_bytes"] = (
+            result.get("size_bytes", 0) - baseline.get("size_bytes", 0) if compare else None
+        )
+        result["matched"] = (
+            all(rule_matches(rule, result) for rule in match_rules) if match_rules else False
+        )
         result["excluded"] = any(rule_matches(rule, result) for rule in exclude_rules)
         result.setdefault("custom", {})
         for name, rule in extract_rules.items():

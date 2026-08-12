@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Rebuilt the web console with a clearer responsive workbench, keyboard-accessible tabs and rows, bounded preview controls, rate and clustering controls, reconnectable event streams, and improved result evidence views.
+- Hardened web jobs with strict integer and URL validation, preflight rule validation, 1 MiB API-body and 64 MiB result-preview budgets, non-destructive event history, and replay cursors.
+- Removed access tokens from the rendered DOM and API query-string authentication; remote bootstrap tokens are exchanged for an HttpOnly same-site cookie.
+- Streamed response bodies into bounded previews instead of loading entire responses, preserved all cancellation results, repaired checkpoint resumes, and made multipart retries rewind files safely.
+- Hardened CSV exports against spreadsheet formulas and included dynamic extraction columns in both CLI and web exports.
+- Expanded cURL import support for options before or after URLs, inline options, cookies, auth, timeouts, retries, GET data, JSON, HTTP/2, and explicit unsupported-option errors.
+- Fixed Windows background-server PID tracking and inherited pipe handles, eliminating status failures and smoke-test hangs; fixed the Linux installer to install through the new virtual environment rather than the host interpreter.
+- Expanded secret redaction to token/session/CSRF/API-key variants and sensitive URL query parameters.
+- Added strict linting, formatting, typing, security, extended smoke, and regression coverage to CI.
 ## 1.4.5
 
 - Windows installer now guarantees persistent registration of the imr-intruder launcher directory in the current user's `Path`.
