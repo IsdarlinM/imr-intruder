@@ -11,7 +11,11 @@ def main() -> int:
         raise SystemExit("usage: link_host_paths.py VENV_PYTHON")
     venv_python = Path(sys.argv[1])
     completed = subprocess.run(
-        [str(venv_python), "-c", "import json,site; print(json.dumps(site.getsitepackages()))"],
+        [
+            str(venv_python),
+            "-c",
+            "import json,site; print(json.dumps(site.getsitepackages()))",
+        ],
         text=True,
         capture_output=True,
         check=True,

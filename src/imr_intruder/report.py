@@ -2,26 +2,55 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-_SECRET_KEYS = {"authorization", "cookie", "set-cookie", "password", "token", "secret", "api_key", "apikey"}
+_SECRET_KEY = re.compile(
+    r"(?:pass(?:word)?|secret|token|api[_-]?key|authorization|cookie|session|csrf)",
+    re.I,
+)
+
+
+def _redact_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return value
+    if not parsed.query:
+        return value
+    query = [
+        (key, "<REDACTED>" if _SECRET_KEY.search(key) else item)
+        for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+    ]
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)
+    )
 
 
 def _redact(value: Any, key: str = "") -> Any:
-    if key.lower() in _SECRET_KEYS:
+    if _SECRET_KEY.search(key):
         return "<REDACTED>"
     if isinstance(value, dict):
-        return {item_key: _redact(item_value, str(item_key)) for item_key, item_value in value.items()}
+        return {
+            item_key: _redact(item_value, str(item_key)) for item_key, item_value in value.items()
+        }
     if isinstance(value, list):
         return [_redact(item) for item in value]
+    if isinstance(value, str) and (key.lower().endswith("url") or key.lower() == "location"):
+        return _redact_url(value)
     return value
 
 
 def load_results(path: Path) -> list[dict[str, Any]]:
     if path.suffix.lower() == ".jsonl":
-        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
     data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, list):
         return data
@@ -30,10 +59,13 @@ def load_results(path: Path) -> list[dict[str, Any]]:
     raise ValueError("Results file must be JSONL, a JSON list, or an object with results.")
 
 
-def build_html_report(results: list[dict[str, Any]], output: Path, title: str = "imr-intruder report") -> Path:
+def build_html_report(
+    results: list[dict[str, Any]], output: Path, title: str = "imr-intruder report"
+) -> Path:
     safe_results = _redact(results)
     statuses = Counter(str(item.get("status") or "error") for item in safe_results)
     clusters = Counter(str(item.get("cluster") or "-") for item in safe_results)
+
     def anomaly_value(row: dict[str, Any]) -> float:
         value = row.get("anomaly_score")
         try:
@@ -69,7 +101,7 @@ pre{{white-space:pre-wrap;max-width:900px;max-height:480px;overflow:auto}}code{{
 <div class="card"><strong>Status</strong><pre>{html.escape(json.dumps(statuses, indent=2))}</pre></div>
 <div class="card"><strong>Clusters</strong><pre>{html.escape(json.dumps(clusters, indent=2))}</pre></div></div>
 <table><thead><tr><th>#</th><th>Name</th><th>Status</th><th>Bytes</th><th>ms</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Details</th></tr></thead>
-<tbody>{''.join(rows)}</tbody></table></main></body></html>"""
+<tbody>{"".join(rows)}</tbody></table></main></body></html>"""
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(document, encoding="utf-8")
     return output

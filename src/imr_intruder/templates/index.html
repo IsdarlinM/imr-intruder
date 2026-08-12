@@ -3,113 +3,224 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>imr-intruder</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0a0d14">
+  <title>imr-intruder | HTTP Workbench</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body data-token="{{ token }}">
-  <header class="topbar">
-    <div>
-      <h1>imr-intruder</h1>
-      <span class="version">imr :: v{{ version }}</span>
-    </div>
-    <div class="actions">
-      <button id="themeButton" class="ghost" type="button">Theme</button>
-      <button id="runButton" class="primary" type="button">Run scan</button>
-    </div>
-  </header>
-
-  <main>
-    <section class="panel configuration">
-      <div class="section-title">
-        <div><span class="eyebrow">Request builder</span><h2>Target and transport</h2></div>
-        <span id="stateBadge" class="badge">Ready</span>
-      </div>
-      <div class="grid request-grid">
-        <label class="method-field">Method<select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label>
-        <label class="url-field">URL<input id="url" type="url" placeholder="https://example.test/api/{{VALUE}}" autocomplete="off"></label>
-        <label>Workers<input id="workers" type="number" min="1" max="16" value="2"></label>
-        <label>Delay ms<input id="delayMs" type="number" min="0" value="0"></label>
-        <label>Timeout<input id="timeout" type="number" min="0.1" value="15" step="0.1"></label>
-        <label>Retries<input id="retries" type="number" min="0" max="5" value="0"></label>
-      </div>
-      <div class="toggles">
-        <label><input id="verifyTls" type="checkbox" checked> Verify TLS</label>
-        <label><input id="followRedirects" type="checkbox"> Follow redirects</label>
-        <label><input id="http2" type="checkbox"> HTTP/2</label>
-        <label><input id="backoff" type="checkbox"> Retry backoff</label>
-      </div>
-    </section>
-
-    <section class="editor-layout">
-      <div class="panel editor-panel">
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="headers" type="button">Headers</button>
-          <button class="tab" data-tab="params" type="button">Parameters</button>
-          <button class="tab" data-tab="cookies" type="button">Cookies</button>
-          <button class="tab" data-tab="body" type="button">Body</button>
-          <button class="tab" data-tab="payloads" type="button">Payloads</button>
-          <button class="tab" data-tab="analysis" type="button">Analysis</button>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="Workspace navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">IM</span>
+        <div class="brand-copy">
+          <strong>imr-intruder</strong>
+          <span>Security workbench</span>
         </div>
-        <div class="tab-content active" data-panel="headers"><textarea id="headers" spellcheck="false" placeholder="User-Agent: imr-intruder/1.4.5&#10;X-Test: {{VALUE}}"></textarea></div>
-        <div class="tab-content" data-panel="params"><textarea id="params" spellcheck="false" placeholder="page=1&#10;query={{VALUE}}"></textarea></div>
-        <div class="tab-content" data-panel="cookies"><textarea id="cookies" spellcheck="false" placeholder="session=research-session"></textarea></div>
-        <div class="tab-content" data-panel="body">
-          <label>Body type<select id="bodyType"><option value="none">None</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw</option></select></label>
-          <textarea id="body" spellcheck="false" placeholder='{"value":"{{VALUE}}"}'></textarea>
+      </div>
+
+      <nav class="primary-nav" aria-label="Workbench sections">
+        <span class="nav-label">Workspace</span>
+        <a class="nav-item active" href="#requestWorkspace" data-section="requestWorkspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+          <span>Request builder</span>
+        </a>
+        <a class="nav-item" href="#resultsWorkspace" data-section="resultsWorkspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9m7 10V5m7 14v-7"/></svg>
+          <span>Response analysis</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-card">
+        <span class="nav-label">Current session</span>
+        <div class="session-status"><span class="status-dot"></span><strong>Local operator</strong></div>
+        <p>Requests execute from this machine. Sensitive values are redacted from exports.</p>
+      </div>
+
+      <div class="sidebar-footer">
+        <span>Version {{ version }}</span>
+        <a href="https://github.com/IsdarlinM/imr-intruder" target="_blank" rel="noreferrer">Documentation</a>
+      </div>
+    </aside>
+
+    <div class="app-frame">
+      <header class="command-bar">
+        <div class="command-context">
+          <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div class="breadcrumbs" aria-label="Breadcrumb"><span>Projects</span><i>/</i><strong>Untitled request</strong></div>
         </div>
-        <div class="tab-content" data-panel="payloads">
-          <div class="grid payload-controls">
-            <label>Mode<select id="mode"><option value="sniper">Sniper</option><option value="battering-ram">Battering ram</option><option value="pitchfork">Pitchfork</option><option value="cluster-bomb">Cluster bomb</option></select></label>
-            <label>Maximum requests<input id="maxRequests" type="number" min="1" max="10000" value="2000"></label>
+        <div class="command-actions">
+          <span id="stateBadge" class="state-badge" role="status"><span class="state-pulse"></span><span class="state-label">Ready</span></span>
+          <button id="themeButton" class="icon-button theme-button" type="button" aria-label="Switch color theme">
+            <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span id="themeLabel">Light</span>
+          </button>
+          <button id="runButton" class="primary run-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>
+            <span>Run request</span><kbd>Ctrl Enter</kbd>
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <header class="workspace-heading">
+          <div>
+            <span class="eyebrow">HTTP testing workspace</span>
+            <h1>Request intelligence</h1>
+            <p>Configure a controlled request, introduce payload variations, and compare every response from one focused workspace.</p>
           </div>
-          <p class="hint">One value per line. For multiple placeholders, use sections such as <code>[USER]</code> and <code>[TOKEN]</code>.</p>
-          <textarea id="payloads" spellcheck="false" placeholder="alpha&#10;beta&#10;gamma"></textarea>
-        </div>
-        <div class="tab-content analysis-grid" data-panel="analysis">
-          <label>Columns<textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
-          <label>Match rules<textarea id="match" placeholder="text:Welcome&#10;regex:user_id\s*=\s*\d+"></textarea></label>
-          <label>Exclude rules<textarea id="exclude" placeholder="text:Invalid credentials"></textarea></label>
-          <label>Extract columns<textarea id="extract" placeholder="csrf=regex:name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;"></textarea></label>
-        </div>
-      </div>
+          <div class="safety-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.9 8.2 7 10 4.1-1.8 7-5.4 7-10V6zM9 12l2 2 4-4"/></svg>
+            <div><strong>Authorized targets only</strong><span>Use explicit scope and rate limits.</span></div>
+          </div>
+        </header>
 
-      <aside class="panel run-panel">
-        <h2>Run control</h2>
-        <div class="progress-track"><div id="progressBar"></div></div>
-        <div class="metrics">
-          <div><span>Completed</span><strong id="completedMetric">0</strong></div>
-          <div><span>Interesting</span><strong id="interestingMetric">0</strong></div>
-          <div><span>Errors</span><strong id="errorMetric">0</strong></div>
-        </div>
-        <button id="pauseButton" type="button" disabled>Pause</button>
-        <button id="cancelButton" class="danger" type="button" disabled>Cancel</button>
-        <a id="csvLink" class="button-link disabled" href="#">Export CSV</a>
-        <div id="message" class="message" aria-live="polite"></div>
-      </aside>
-    </section>
+        <div class="workspace-grid">
+          <section id="requestWorkspace" class="surface request-workspace" aria-labelledby="request-title">
+            <div class="surface-header">
+              <div>
+                <span class="step-label">Request 01</span>
+                <h2 id="request-title">Build the request</h2>
+              </div>
+              <label class="inline-name"><span>Request name</span><input id="requestName" placeholder="Untitled request" autocomplete="off"></label>
+            </div>
 
-    <section class="panel results-panel">
-      <div class="section-title results-title">
-        <div><span class="eyebrow">Response intelligence</span><h2>Live results</h2></div>
-        <div class="filters">
-          <input id="search" type="search" placeholder="Filter rows">
-          <select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx</option><option value="3">3xx</option><option value="4">4xx</option><option value="5">5xx</option><option value="error">Errors</option></select>
-          <label><input id="differenceOnly" type="checkbox"> Differences only</label>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Name</th><th>Method</th><th>Status</th><th>Bytes</th><th>Time</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead>
-          <tbody id="resultsBody"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+            <div class="target-builder">
+              <label class="method-field"><span class="sr-only">HTTP method</span><select id="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label>
+              <label class="url-field"><span class="sr-only">Target URL</span><input id="url" type="url" placeholder="https://target.example/api/&#123;&#123;VALUE&#125;&#125;" autocomplete="off" required></label>
+              <span id="scopeChip" class="scope-chip"><span></span><b id="scopeLabel">Awaiting target</b></span>
+            </div>
 
-  <div id="drawer" class="drawer" aria-hidden="true">
-    <div class="drawer-header"><h2>Response details</h2><button id="drawerClose" type="button">Close</button></div>
-    <pre id="drawerContent"></pre>
+            <div class="transport-strip" aria-label="Transport options">
+              <span class="strip-label">Transport</span>
+              <label class="switch-control"><input id="verifyTls" type="checkbox" checked><span class="switch"></span><span>Verify TLS</span></label>
+              <label class="switch-control"><input id="followRedirects" type="checkbox"><span class="switch"></span><span>Follow redirects</span></label>
+              <label class="switch-control"><input id="http2" type="checkbox"><span class="switch"></span><span>HTTP/2</span></label>
+              <label class="switch-control"><input id="backoff" type="checkbox"><span class="switch"></span><span>Retry backoff</span></label>
+            </div>
+
+            <div class="editor-shell">
+              <div class="tabs" role="tablist" aria-label="Request configuration">
+                <button id="tab-headers" class="tab active" data-tab="headers" role="tab" aria-selected="true" aria-controls="panel-headers" type="button"><span>Headers</span></button>
+                <button id="tab-params" class="tab" data-tab="params" role="tab" aria-selected="false" aria-controls="panel-params" type="button" tabindex="-1"><span>Parameters</span></button>
+                <button id="tab-cookies" class="tab" data-tab="cookies" role="tab" aria-selected="false" aria-controls="panel-cookies" type="button" tabindex="-1"><span>Cookies</span></button>
+                <button id="tab-body" class="tab" data-tab="body" role="tab" aria-selected="false" aria-controls="panel-body" type="button" tabindex="-1"><span>Body</span></button>
+                <button id="tab-payloads" class="tab" data-tab="payloads" role="tab" aria-selected="false" aria-controls="panel-payloads" type="button" tabindex="-1"><span>Payloads</span><em>Intruder</em></button>
+                <button id="tab-analysis" class="tab" data-tab="analysis" role="tab" aria-selected="false" aria-controls="panel-analysis" type="button" tabindex="-1"><span>Analysis</span></button>
+              </div>
+
+              <div id="panel-headers" class="tab-content active" data-panel="headers" role="tabpanel" aria-labelledby="tab-headers">
+                <div class="editor-heading"><div><strong>Request headers</strong><span>One header per line</span></div><code>Key: Value</code></div>
+                <textarea id="headers" spellcheck="false" aria-label="Request headers" placeholder="User-Agent: imr-intruder/{{ version }}&#10;X-Test: &#123;&#123;VALUE&#125;&#125;"></textarea>
+              </div>
+              <div id="panel-params" class="tab-content" data-panel="params" role="tabpanel" aria-labelledby="tab-params" hidden>
+                <div class="editor-heading"><div><strong>Query parameters</strong><span>Values are URL encoded automatically</span></div><code>key=value</code></div>
+                <textarea id="params" spellcheck="false" aria-label="Query parameters" placeholder="page=1&#10;query=&#123;&#123;VALUE&#125;&#125;"></textarea>
+              </div>
+              <div id="panel-cookies" class="tab-content" data-panel="cookies" role="tabpanel" aria-labelledby="tab-cookies" hidden>
+                <div class="editor-heading"><div><strong>Request cookies</strong><span>Secrets are redacted from evidence</span></div><code>name=value</code></div>
+                <textarea id="cookies" spellcheck="false" aria-label="Cookies" placeholder="session=research-session"></textarea>
+              </div>
+              <div id="panel-body" class="tab-content" data-panel="body" role="tabpanel" aria-labelledby="tab-body" hidden>
+                <div class="editor-heading"><div><strong>Request body</strong><span>Select the correct content encoding</span></div><label class="body-type"><span class="sr-only">Body type</span><select id="bodyType"><option value="none">No body</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw text</option></select></label></div>
+                <textarea id="body" spellcheck="false" aria-label="Request body" placeholder='{&quot;value&quot;:&quot;&#123;&#123;VALUE&#125;&#125;&quot;}'></textarea>
+              </div>
+              <div id="panel-payloads" class="tab-content" data-panel="payloads" role="tabpanel" aria-labelledby="tab-payloads" hidden>
+                <div class="payload-toolbar">
+                  <div><strong>Payload positions</strong><span>One value per line; use named sections for multiple positions.</span></div>
+                  <div class="compact-fields">
+                    <label><span>Attack mode</span><select id="mode"><option value="sniper">Sniper</option><option value="battering-ram">Battering ram</option><option value="pitchfork">Pitchfork</option><option value="cluster-bomb">Cluster bomb</option></select></label>
+                    <label><span>Request cap</span><input id="maxRequests" type="number" min="1" max="10000" step="1" value="2000"></label>
+                  </div>
+                </div>
+                <textarea id="payloads" spellcheck="false" aria-label="Payload values" placeholder="alpha&#10;beta&#10;gamma"></textarea>
+                <p class="editor-tip"><strong>Named positions:</strong> add sections such as <code>[USER]</code> and <code>[TOKEN]</code>.</p>
+              </div>
+              <div id="panel-analysis" class="tab-content analysis-grid" data-panel="analysis" role="tabpanel" aria-labelledby="tab-analysis" hidden>
+                <label><span>Response columns</span><small>Expose useful response evidence</small><textarea id="columns" placeholder="server=header:Server&#10;final_url=response:url"></textarea></label>
+                <label><span>Match rules</span><small>Flag interesting responses</small><textarea id="match" placeholder="text:Welcome&#10;regex:user_id\s*=\s*\d+"></textarea></label>
+                <label><span>Exclude rules</span><small>Remove known noise</small><textarea id="exclude" placeholder="text:Invalid credentials"></textarea></label>
+                <label><span>Extract fields</span><small>Capture values for evidence</small><textarea id="extract" placeholder="csrf=regex:name=&quot;csrf&quot; value=&quot;([^&quot;]+)&quot;"></textarea></label>
+              </div>
+            </div>
+          </section>
+
+          <aside class="execution-column" aria-label="Execution controls">
+            <section class="surface settings-panel" aria-labelledby="settings-title">
+              <div class="surface-header compact"><div><span class="step-label">Execution</span><h2 id="settings-title">Run settings</h2></div></div>
+              <div class="setting-group">
+                <div class="setting-heading"><strong>Concurrency</strong><span>Control request pressure</span></div>
+                <div class="field-grid three">
+                  <label><span>Workers</span><input id="workers" type="number" min="1" max="16" step="1" value="2"></label>
+                  <label><span>Rate / s</span><input id="rate" type="number" min="0.001" max="10000" step="0.1" placeholder="None"></label>
+                  <label><span>Delay ms</span><input id="delayMs" type="number" min="0" max="3600000" step="1" value="0"></label>
+                </div>
+              </div>
+              <div class="setting-group">
+                <div class="setting-heading"><strong>Resilience</strong><span>Network behavior and evidence size</span></div>
+                <div class="field-grid two">
+                  <label><span>Timeout s</span><input id="timeout" type="number" min="0.1" max="300" value="15" step="0.1"></label>
+                  <label><span>Retries</span><input id="retries" type="number" min="0" max="5" step="1" value="0"></label>
+                  <label><span>Preview KiB</span><input id="bodyLimit" type="number" min="1" max="1024" step="1" value="64"></label>
+                  <label><span>Cluster %</span><input id="clusterThreshold" type="number" min="0" max="100" step="0.1" value="98"></label>
+                </div>
+              </div>
+            </section>
+
+            <section class="surface run-panel" aria-labelledby="run-title">
+              <div class="run-panel-head"><div><span class="step-label">Live execution</span><h2 id="run-title">Run overview</h2></div><span class="live-indicator"><i></i><span class="live-label">Idle</span></span></div>
+              <div class="progress-meta"><span>Progress</span><strong id="progressText">0%</strong></div>
+              <div class="progress-track" role="progressbar" aria-label="Job progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progressBar"></div></div>
+              <div class="metrics">
+                <div><span>Total</span><strong id="totalMetric">0</strong></div>
+                <div><span>Complete</span><strong id="completedMetric">0</strong></div>
+                <div><span>Interesting</span><strong id="interestingMetric">0</strong></div>
+                <div><span>Errors</span><strong id="errorMetric">0</strong></div>
+              </div>
+              <div class="control-grid"><button id="pauseButton" type="button" disabled>Pause</button><button id="cancelButton" class="danger" type="button" disabled>Cancel</button></div>
+              <a id="csvLink" class="button-link secondary disabled" href="#" aria-disabled="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>Export results as CSV</a>
+              <div id="message" class="message" role="alert" aria-live="polite"></div>
+            </section>
+          </aside>
+        </div>
+
+        <section id="resultsWorkspace" class="surface results-panel" aria-labelledby="results-title">
+          <div class="results-header">
+            <div><span class="step-label">Response intelligence</span><h2 id="results-title">Results</h2><p>Compare status, timing, similarity, clustering, and anomalies.</p></div>
+            <div class="filters" aria-label="Result filters">
+              <label class="search-control" for="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span class="sr-only">Filter rows</span><input id="search" type="search" placeholder="Filter results"></label>
+              <label class="sr-only" for="statusFilter">Status group</label><select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx success</option><option value="3">3xx redirect</option><option value="4">4xx client error</option><option value="5">5xx server error</option><option value="error">Transport errors</option></select>
+              <label class="filter-check"><input id="differenceOnly" type="checkbox"><span>Differences only</span></label>
+            </div>
+          </div>
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/></svg></div>
+            <strong>No response data yet</strong>
+            <p>Configure an authorized target and run the request. Responses will stream into this analysis table in real time.</p>
+            <span>Tip: press <kbd>Ctrl Enter</kbd> from anywhere in the workspace.</span>
+          </div>
+          <div id="tableWrap" class="table-wrap" hidden>
+            <table>
+              <thead><tr><th>#</th><th>Request</th><th>Method</th><th>Status</th><th>Bytes</th><th>Latency</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
   </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="drawerTitle" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <div><span class="step-label">Response evidence</span><h2 id="drawerTitle">Request details</h2></div>
+      <div><button id="copyButton" class="secondary" type="button">Copy JSON</button><button id="drawerClose" class="icon-button" type="button" aria-label="Close response details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    </div>
+    <div class="drawer-summary"><span>Structured evidence</span><span>Secrets redacted</span></div>
+    <pre id="drawerContent" tabindex="0"></pre>
+  </aside>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

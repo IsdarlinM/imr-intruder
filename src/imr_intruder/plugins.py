@@ -19,7 +19,19 @@ def plugin_status() -> list[dict[str, str]]:
     rows = []
     for name, value in discover_plugins().items():
         if isinstance(value, Exception):
-            rows.append({"name": name, "status": "error", "detail": f"{type(value).__name__}: {value}"})
+            rows.append(
+                {
+                    "name": name,
+                    "status": "error",
+                    "detail": f"{type(value).__name__}: {value}",
+                }
+            )
         else:
-            rows.append({"name": name, "status": "loaded", "detail": getattr(value, "__doc__", "") or ""})
+            rows.append(
+                {
+                    "name": name,
+                    "status": "loaded",
+                    "detail": getattr(value, "__doc__", "") or "",
+                }
+            )
     return rows
