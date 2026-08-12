@@ -186,7 +186,7 @@ class InstallerTests(unittest.TestCase):
         ):
             self.assertIn(value, helper)
         self.assertNotIn("install_from_host", helper)
-        self.assertEqual("1.4.6", module.project_version(ROOT))
+        self.assertEqual("1.5.0", module.project_version(ROOT))
         paths = {
             "app_home": Path(r"C:\App"),
             "config": Path(r"C:\Config"),
@@ -226,6 +226,19 @@ class InstallerTests(unittest.TestCase):
             uninstall.index("windows_path.py"),
             uninstall.index('if exist "%APP_HOME%\\releases" rmdir'),
         )
+
+    def test_source_distribution_manifest_contains_native_installers(self):
+        manifest = read("MANIFEST.in")
+        for required in (
+            "requirements.txt",
+            "install.sh",
+            "install.cmd",
+            "uninstall.sh",
+            "uninstall.cmd",
+            "recursive-include docs",
+            "recursive-include scripts",
+        ):
+            self.assertIn(required, manifest)
 
     def test_linux_installer_uses_the_isolated_python(self):
         installer = read("install.sh")

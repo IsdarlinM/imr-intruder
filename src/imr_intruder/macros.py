@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from .core import execute_request
 from .intelligence import extract_value
 from .payloads import render
@@ -21,6 +23,7 @@ def run_macro(path: Path, session_name: str | None = None) -> list[dict[str, Any
         else {"headers": {}, "cookies": {}, "variables": {}}
     )
     variables = dict(session.get("variables", {}))
+    cookie_jar = httpx.Cookies(session.get("cookies", {}))
     results: list[dict[str, Any]] = []
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict) or "request" not in step:
@@ -34,7 +37,7 @@ def run_macro(path: Path, session_name: str | None = None) -> list[dict[str, Any
             **session.get("cookies", {}),
             **request.get("cookies", {}),
         }
-        result = execute_request(index, request)
+        result = execute_request(index, request, cookie_jar=cookie_jar)
         results.append(result)
         for name, rule in (step.get("extract") or {}).items():
             variables[name] = extract_value(str(rule), result)
@@ -46,5 +49,6 @@ def run_macro(path: Path, session_name: str | None = None) -> list[dict[str, Any
             )
     if session_name:
         session["variables"] = variables
+        session["cookies"] = {cookie.name: cookie.value for cookie in cookie_jar.jar}
         save_session(session_name, session)
     return results

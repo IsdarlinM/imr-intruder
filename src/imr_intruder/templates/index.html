@@ -29,11 +29,21 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9m7 10V5m7 14v-7"/></svg>
           <span>Response analysis</span>
         </a>
+        <a class="nav-item" href="#libraryWorkspace" data-section="libraryWorkspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5"/></svg>
+          <span>Saved requests</span>
+        </a>
+        <a class="nav-item" href="#historyWorkspace" data-section="historyWorkspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2-5.7L4 8M4 4v4h4"/></svg>
+          <span>Run history</span>
+        </a>
       </nav>
 
       <div class="sidebar-card">
         <span class="nav-label">Current session</span>
-        <div class="session-status"><span class="status-dot"></span><strong>Local operator</strong></div>
+        <div class="session-status"><span class="status-dot"></span><strong id="sessionIdentity">Loading identity</strong></div>
+        <label class="workspace-switch"><span>Workspace</span><select id="workspaceSelect"><option value="">Global workspace</option></select></label>
+        <div class="workspace-create"><input id="newWorkspaceName" placeholder="New workspace" maxlength="80"><button id="createWorkspaceButton" type="button" aria-label="Create workspace">+</button></div>
         <p>Requests execute from this machine. Sensitive values are redacted from exports.</p>
       </div>
 
@@ -49,10 +59,13 @@
           <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
-          <div class="breadcrumbs" aria-label="Breadcrumb"><span>Projects</span><i>/</i><strong>Untitled request</strong></div>
+          <div class="breadcrumbs" aria-label="Breadcrumb"><span id="workspaceName">Global</span><i>/</i><strong>Untitled request</strong></div>
         </div>
         <div class="command-actions">
           <span id="stateBadge" class="state-badge" role="status"><span class="state-pulse"></span><span class="state-label">Ready</span></span>
+          <button id="importButton" class="secondary command-secondary" type="button">Import</button>
+          <button id="saveButton" class="secondary command-secondary" type="button">Save</button>
+          <button id="copyCurlButton" class="secondary command-secondary" type="button">Copy cURL</button>
           <button id="themeButton" class="icon-button theme-button" type="button" aria-label="Switch color theme">
             <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
             <span id="themeLabel">Light</span>
@@ -88,7 +101,7 @@
             </div>
 
             <div class="target-builder">
-              <label class="method-field"><span class="sr-only">HTTP method</span><select id="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option></select></label>
+              <label class="method-field"><span class="sr-only">HTTP method</span><select id="method" aria-label="HTTP method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option><option>TRACE</option><option>CONNECT</option><option>PROPFIND</option><option>MKCOL</option><option>COPY</option><option>MOVE</option></select></label>
               <label class="url-field"><span class="sr-only">Target URL</span><input id="url" type="url" placeholder="https://target.example/api/&#123;&#123;VALUE&#125;&#125;" autocomplete="off" required></label>
               <span id="scopeChip" class="scope-chip"><span></span><b id="scopeLabel">Awaiting target</b></span>
             </div>
@@ -124,7 +137,7 @@
                 <textarea id="cookies" spellcheck="false" aria-label="Cookies" placeholder="session=research-session"></textarea>
               </div>
               <div id="panel-body" class="tab-content" data-panel="body" role="tabpanel" aria-labelledby="tab-body" hidden>
-                <div class="editor-heading"><div><strong>Request body</strong><span>Select the correct content encoding</span></div><label class="body-type"><span class="sr-only">Body type</span><select id="bodyType"><option value="none">No body</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw text</option></select></label></div>
+                <div class="editor-heading"><div><strong>Request body</strong><span>Select the correct content encoding</span></div><label class="body-type"><span class="sr-only">Body type</span><select id="bodyType"><option value="none">No body</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw text</option><option value="multipart">Multipart fields</option></select></label></div>
                 <textarea id="body" spellcheck="false" aria-label="Request body" placeholder='{&quot;value&quot;:&quot;&#123;&#123;VALUE&#125;&#125;&quot;}'></textarea>
               </div>
               <div id="panel-payloads" class="tab-content" data-panel="payloads" role="tabpanel" aria-labelledby="tab-payloads" hidden>
@@ -167,6 +180,19 @@
                   <label><span>Cluster %</span><input id="clusterThreshold" type="number" min="0" max="100" step="0.1" value="98"></label>
                 </div>
               </div>
+              <div class="setting-group">
+                <div class="setting-heading"><strong>Session &amp; routing</strong><span>Reusable identity and upstream proxy</span></div>
+                <div class="field-stack">
+                  <label><span>Saved session</span><select id="session"><option value="">No session</option></select></label>
+                  <label><span>Proxy URL</span><input id="proxy" type="url" placeholder="http://127.0.0.1:8080" autocomplete="off"></label>
+                  <label><span>Authentication</span><select id="authType"><option value="none">None</option><option value="basic">Basic</option><option value="bearer">Bearer token</option></select></label>
+                  <div id="basicAuthFields" class="field-grid two auth-fields" hidden>
+                    <label><span>Username</span><input id="authUsername" autocomplete="username"></label>
+                    <label><span>Password</span><input id="authPassword" type="password" autocomplete="current-password"></label>
+                  </div>
+                  <label id="bearerAuthField" class="auth-fields" hidden><span>Bearer token</span><input id="bearerToken" type="password" autocomplete="off"></label>
+                </div>
+              </div>
             </section>
 
             <section class="surface run-panel" aria-labelledby="run-title">
@@ -180,7 +206,12 @@
                 <div><span>Errors</span><strong id="errorMetric">0</strong></div>
               </div>
               <div class="control-grid"><button id="pauseButton" type="button" disabled>Pause</button><button id="cancelButton" class="danger" type="button" disabled>Cancel</button></div>
-              <a id="csvLink" class="button-link secondary disabled" href="#" aria-disabled="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>Export results as CSV</a>
+              <div class="export-grid" aria-label="Export results">
+                <a id="csvLink" class="button-link secondary disabled" href="#" aria-disabled="true">CSV</a>
+                <a id="jsonLink" class="button-link secondary disabled" href="#" aria-disabled="true">JSON</a>
+                <a id="jsonlLink" class="button-link secondary disabled" href="#" aria-disabled="true">JSONL</a>
+                <a id="reportLink" class="button-link secondary disabled" href="#" aria-disabled="true">HTML</a>
+              </div>
               <div id="message" class="message" role="alert" aria-live="polite"></div>
             </section>
           </aside>
@@ -188,7 +219,7 @@
 
         <section id="resultsWorkspace" class="surface results-panel" aria-labelledby="results-title">
           <div class="results-header">
-            <div><span class="step-label">Response intelligence</span><h2 id="results-title">Results</h2><p>Compare status, timing, similarity, clustering, and anomalies.</p></div>
+            <div><span class="step-label">Response intelligence</span><h2 id="results-title">Results</h2><p>Compare status, timing, similarity, clustering, and anomalies. <span id="visibleCount"></span></p></div>
             <div class="filters" aria-label="Result filters">
               <label class="search-control" for="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span class="sr-only">Filter rows</span><input id="search" type="search" placeholder="Filter results"></label>
               <label class="sr-only" for="statusFilter">Status group</label><select id="statusFilter"><option value="all">All statuses</option><option value="2">2xx success</option><option value="3">3xx redirect</option><option value="4">4xx client error</option><option value="5">5xx server error</option><option value="error">Transport errors</option></select>
@@ -203,24 +234,51 @@
           </div>
           <div id="tableWrap" class="table-wrap" hidden>
             <table>
-              <thead><tr><th>#</th><th>Request</th><th>Method</th><th>Status</th><th>Bytes</th><th>Latency</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th></tr></thead>
+              <thead><tr><th>#</th><th>Request</th><th>Method</th><th>Status</th><th>Bytes</th><th>Latency</th><th>Similarity</th><th>Cluster</th><th>Anomaly</th><th>Location</th><th>Extracted</th></tr></thead>
               <tbody id="resultsBody"></tbody>
             </table>
           </div>
         </section>
+
+        <div class="operations-grid">
+          <section id="libraryWorkspace" class="surface collection-panel" aria-labelledby="library-title">
+            <div class="collection-header"><div><span class="step-label">Request library</span><h2 id="library-title">Saved requests</h2><p>Open reusable request configurations stored on this machine.</p></div><button id="refreshLibraryButton" class="secondary" type="button">Refresh</button></div>
+            <div id="savedRequestsList" class="collection-list"><p class="collection-empty">No saved requests yet.</p></div>
+          </section>
+          <section id="historyWorkspace" class="surface collection-panel" aria-labelledby="history-title">
+            <div class="collection-header"><div><span class="step-label">Evidence archive</span><h2 id="history-title">Run history</h2><p>Reopen completed jobs after a browser or server restart.</p></div><button id="refreshHistoryButton" class="secondary" type="button">Refresh</button></div>
+            <div id="historyList" class="collection-list"><p class="collection-empty">No completed runs yet.</p></div>
+          </section>
+        </div>
       </main>
     </div>
   </div>
 
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
-  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="drawerTitle" role="dialog" aria-modal="true">
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-labelledby="drawerTitle" role="dialog" aria-modal="true" inert>
     <div class="drawer-header">
       <div><span class="step-label">Response evidence</span><h2 id="drawerTitle">Request details</h2></div>
       <div><button id="copyButton" class="secondary" type="button">Copy JSON</button><button id="drawerClose" class="icon-button" type="button" aria-label="Close response details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     </div>
     <div class="drawer-summary"><span>Structured evidence</span><span>Secrets redacted</span></div>
+    <div class="drawer-tabs" role="tablist" aria-label="Evidence sections">
+      <button class="drawer-tab active" data-drawer-tab="summary" type="button">Summary</button>
+      <button class="drawer-tab" data-drawer-tab="request" type="button">Request</button>
+      <button class="drawer-tab" data-drawer-tab="response" type="button">Response</button>
+      <button class="drawer-tab" data-drawer-tab="analysis" type="button">Analysis</button>
+      <button class="drawer-tab" data-drawer-tab="raw" type="button">Raw JSON</button>
+    </div>
     <pre id="drawerContent" tabindex="0"></pre>
   </aside>
+
+  <div id="importBackdrop" class="modal-backdrop" hidden></div>
+  <section id="importDialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle" aria-hidden="true" inert>
+    <div class="modal-header"><div><span class="step-label">Request importer</span><h2 id="importTitle">Import request</h2></div><button id="importClose" class="icon-button" type="button" aria-label="Close importer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <label><span>Format</span><select id="importKind"><option value="curl">cURL</option><option value="raw">Raw HTTP</option><option value="har">HAR JSON</option><option value="burp">Burp request</option><option value="zap">ZAP request</option></select></label>
+    <label><span>Request content</span><textarea id="importContent" spellcheck="false" placeholder="curl https://target.example/api -H 'Accept: application/json'"></textarea></label>
+    <div class="modal-actions"><button id="importCancel" class="secondary" type="button">Cancel</button><button id="importApply" class="primary" type="button">Import into builder</button></div>
+    <div id="importMessage" class="message" role="alert"></div>
+  </section>
   <script src="/static/app.js?v={{ version }}" defer></script>
 </body>
 </html>

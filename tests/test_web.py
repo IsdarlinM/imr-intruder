@@ -43,7 +43,7 @@ class WebTests(unittest.TestCase):
 
     def setUp(self):
         self.token = "test-token"
-        self.client = TestClient(create_app(self.token))
+        self.client = TestClient(create_app(self.token, persist_history=False))
 
     def test_health_and_security_headers(self):
         response = self.client.get("/health")
@@ -90,7 +90,12 @@ class WebTests(unittest.TestCase):
                 viewer = create_token("viewer", "viewer")
                 operator = create_token("operator", "operator")
                 client = TestClient(
-                    create_app("admin-secret", require_page_token=True, multiuser=True)
+                    create_app(
+                        "admin-secret",
+                        require_page_token=True,
+                        multiuser=True,
+                        persist_history=False,
+                    )
                 )
                 page = client.get("/?token=" + viewer)
                 self.assertEqual(page.status_code, 200)
@@ -134,7 +139,7 @@ class WebTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 400, response.text)
 
     def test_api_does_not_accept_tokens_from_query_strings(self):
-        client = TestClient(create_app(self.token))
+        client = TestClient(create_app(self.token, persist_history=False))
         response = client.post("/api/jobs?token=" + self.token, json={"url": self.url})
         self.assertEqual(response.status_code, 403)
 

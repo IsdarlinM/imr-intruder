@@ -1,28 +1,59 @@
 from __future__ import annotations
 
+import fnmatch
+import ipaddress
 import json
 import math
 import re
 import secrets
+import tempfile
 import threading
 import time
 import uuid
-from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import __version__
 from .collaboration import verify_token
-from .core import parse_columns, results_to_csv, run_requests, validate_http_url
+from .core import (
+    parse_columns,
+    redact_url,
+    results_to_csv,
+    run_requests,
+    validate_http_method,
+    validate_http_url,
+)
+from .importers import parse_curl, parse_har, parse_raw_request
 from .intelligence import validate_rule
 from .payloads import build_requests, placeholders
+from .report import build_html_report
+from .storage import (
+    active_storage_directory,
+    atomic_json_write,
+    clear_current_workspace,
+    create_workspace,
+    current_workspace,
+    list_sessions,
+    list_workspaces,
+    load_session,
+    read_json,
+    safe_name,
+    save_history_record,
+    set_current_workspace,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 MAX_VALUES = 2000
@@ -33,7 +64,6 @@ JOB_TTL = 3600
 MAX_JOB_BODY_BYTES = 1024 * 1024
 DEFAULT_BODY_LIMIT = 64 * 1024
 MAX_RESULT_MEMORY = 64 * 1024 * 1024
-ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 _PAYLOAD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -43,6 +73,8 @@ class Job:
     requests: list[dict[str, Any]]
     columns: list[dict[str, str]]
     options: dict[str, Any]
+    owner: str = "local"
+    owner_role: str = "admin"
     events: list[dict[str, Any]] = field(default_factory=list)
     event_condition: threading.Condition = field(default_factory=threading.Condition)
     cancel: threading.Event = field(default_factory=threading.Event)
@@ -51,6 +83,7 @@ class Job:
     status: str = "queued"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    next_sequence: int = 0
 
 
 def _parse_map(raw: str, header: bool = False) -> dict[str, str]:
@@ -73,9 +106,19 @@ def _parse_map(raw: str, header: bool = False) -> dict[str, str]:
     return result
 
 
-def _parse_urlencoded(raw: str) -> dict[str, str]:
+def _store_multivalue(result: dict[str, Any], key: str, value: str) -> None:
+    existing = result.get(key)
+    if existing is None:
+        result[key] = value
+    elif isinstance(existing, list):
+        existing.append(value)
+    else:
+        result[key] = [existing, value]
+
+
+def _parse_urlencoded(raw: str) -> dict[str, Any]:
     """Accept both one-pair-per-line and conventional a=1&b=2 input."""
-    result: dict[str, str] = {}
+    result: dict[str, Any] = {}
     for line_number, raw_line in enumerate(raw.splitlines() or [raw], start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -84,9 +127,11 @@ def _parse_urlencoded(raw: str) -> dict[str, str]:
             pairs = parse_qsl(line, keep_blank_values=True, strict_parsing=False)
             if not pairs:
                 raise ValueError(f"Line {line_number}: invalid URL-encoded form data.")
-            result.update((str(key), str(value)) for key, value in pairs)
+            for key, value in pairs:
+                _store_multivalue(result, str(key), str(value))
         else:
-            result.update(_parse_map(line))
+            for key, value in _parse_map(line).items():
+                _store_multivalue(result, key, value)
     return result
 
 
@@ -162,9 +207,7 @@ def build_web_requests(
         raise ValueError("Request body must be a JSON object.")
 
     url = validate_http_url(payload.get("url", ""))
-    method = str(payload.get("method", "GET")).upper().strip()
-    if method not in ALLOWED_METHODS:
-        raise ValueError(f"Unsupported HTTP method: {method}.")
+    method = validate_http_method(payload.get("method", "GET"))
 
     base: dict[str, Any] = {
         "method": method,
@@ -181,6 +224,35 @@ def build_web_requests(
     if name:
         base["name"] = name
 
+    proxy = str(payload.get("proxy", "")).strip()
+    if proxy:
+        base["proxy"] = proxy
+    auth_type = str(payload.get("auth_type", "none")).lower().strip()
+    if auth_type == "basic":
+        base["auth"] = {
+            "username": str(payload.get("auth_username", "")),
+            "password": str(payload.get("auth_password", "")),
+        }
+    elif auth_type == "bearer":
+        bearer = str(payload.get("bearer_token", ""))
+        if not bearer:
+            raise ValueError("Bearer authentication requires a token.")
+        base["headers"]["Authorization"] = f"Bearer {bearer}"
+    elif auth_type != "none":
+        raise ValueError("Invalid authentication type.")
+
+    session_name = str(payload.get("session", "")).strip()
+    if session_name:
+        session = load_session(session_name)
+        base["headers"] = {**session.get("headers", {}), **base["headers"]}
+        base["cookies"] = {**session.get("cookies", {}), **base["cookies"]}
+        if session.get("auth") and "auth" not in base:
+            base["auth"] = session["auth"]
+        if session.get("proxy") and "proxy" not in base:
+            base["proxy"] = session["proxy"]
+        if session.get("verify_tls") is False and payload.get("verify_tls") is None:
+            base["verify_tls"] = False
+
     body_type = str(payload.get("body_type", "none")).lower().strip()
     body = str(payload.get("body", ""))
     if body_type == "json":
@@ -194,6 +266,11 @@ def build_web_requests(
         base["data"] = _parse_urlencoded(body)
     elif body_type == "raw":
         base["body"] = body
+    elif body_type == "multipart":
+        multipart = _parse_map(body)
+        if any(str(value).startswith("@") for value in multipart.values()):
+            raise ValueError("Web multipart fields cannot read server-side file paths.")
+        base["multipart"] = multipart
     elif body_type == "none":
         if body.strip():
             raise ValueError(
@@ -261,6 +338,8 @@ def create_app(
     request_token: str | None = None,
     require_page_token: bool = False,
     multiuser: bool = False,
+    persist_history: bool = True,
+    allowed_hosts: list[str] | None = None,
 ) -> FastAPI:
     token = request_token or secrets.token_urlsafe(32)
     app = FastAPI(
@@ -275,8 +354,45 @@ def create_app(
     app.state.multiuser = multiuser
     app.state.jobs = {}
     app.state.lock = threading.Lock()
+    app.state.allowed_hosts = tuple(
+        item.lower().strip() for item in (allowed_hosts or []) if item.strip()
+    )
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
     templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+    def history_file(job_id: str) -> Path:
+        return active_storage_directory("results") / f"{safe_name(job_id, 'job id')}.json"
+
+    def request_file(name: str) -> Path:
+        return active_storage_directory("requests") / f"{safe_name(name, 'request name')}.json"
+
+    def job_summary(job: Job) -> dict[str, Any]:
+        return {
+            "job_id": job.id,
+            "name": str(job.requests[0].get("name") or "Untitled request")
+            if job.requests
+            else "Untitled request",
+            "target": redact_url(str(job.requests[0].get("url") or "")) if job.requests else "",
+            "status": job.status,
+            "total": len(job.requests),
+            "completed": len(job.results),
+            "owner": job.owner,
+            "owner_role": job.owner_role,
+            "created_at": job.created_at,
+            "updated_at": job.updated_at,
+        }
+
+    def persist_job(job: Job) -> None:
+        if not persist_history:
+            return
+        save_history_record(
+            job.requests,
+            job.results,
+            job_id=job.id,
+            owner=job.owner,
+            owner_role=job.owner_role,
+            status=job.status,
+        )
 
     def authorize(
         request: Request,
@@ -302,9 +418,33 @@ def create_app(
                     return name, role
         raise HTTPException(403, "Invalid or insufficient token.")
 
+    def target_in_scope(url: str) -> bool:
+        if not app.state.allowed_hosts:
+            return True
+        hostname = (urlsplit(url).hostname or "").lower()
+        for pattern in app.state.allowed_hosts:
+            try:
+                if ipaddress.ip_address(hostname) in ipaddress.ip_network(pattern, strict=False):
+                    return True
+            except ValueError:
+                if fnmatch.fnmatchcase(hostname, pattern):
+                    return True
+        return False
+
     def cleanup_jobs() -> None:
         cutoff = time.time() - JOB_TTL
         with app.state.lock:
+            stale_active = [
+                job
+                for job in app.state.jobs.values()
+                if job.updated_at < cutoff
+                and job.status in {"queued", "running", "paused", "cancelling"}
+            ]
+            for job in stale_active:
+                job.cancel.set()
+                job.pause.clear()
+                job.status = "cancelling"
+                job.updated_at = time.time()
             expired = [
                 job_id
                 for job_id, job in app.state.jobs.items()
@@ -324,9 +464,8 @@ def create_app(
     def emit(job: Job, event: str, **payload: Any) -> None:
         job.updated_at = time.time()
         with job.event_condition:
-            job.events.append(
-                deepcopy({"sequence": len(job.events) + 1, "event": event, **payload})
-            )
+            job.next_sequence += 1
+            job.events.append({"sequence": job.next_sequence, "event": event, **payload})
             job.event_condition.notify_all()
 
     def run_job(job: Job) -> None:
@@ -336,8 +475,25 @@ def create_app(
         def callback(completed: int, total: int, result: dict[str, Any]) -> None:
             while job.pause.is_set() and not job.cancel.is_set():
                 time.sleep(0.05)
-            job.results.append(result)
-            emit(job, "result", completed=completed, total=total, result=result)
+            live_fields = {
+                "index",
+                "name",
+                "method",
+                "url",
+                "status",
+                "size_bytes",
+                "elapsed_ms",
+                "content_type",
+                "http_version",
+                "location",
+                "error",
+                "error_type",
+                "outcome",
+                "response_received",
+            }
+            stable_result = {key: value for key, value in result.items() if key in live_fields}
+            job.results.append(stable_result)
+            emit(job, "result", completed=completed, total=total, result=stable_result)
 
         try:
             final_results = run_requests(
@@ -351,6 +507,7 @@ def create_app(
             job.results = final_results
             emit(job, "snapshot", total=len(job.requests), results=job.results)
             job.status = "cancelled" if job.cancel.is_set() else "done"
+            persist_job(job)
             emit(
                 job,
                 "done",
@@ -361,6 +518,7 @@ def create_app(
         except Exception as exc:
             job.status = "error"
             emit(job, "fatal", error=f"{type(exc).__name__}: {exc}")
+            persist_job(job)
 
     @app.middleware("http")
     async def hardening(request: Request, call_next):
@@ -387,12 +545,15 @@ def create_app(
                 or request.cookies.get("imr_intruder_token", "")
                 or request.headers.get("X-Request-Token", "")
             )
-        response = templates.TemplateResponse(request, "index.html", {"version": __version__})
+        if app.state.require_page_token and request.query_params.get("token"):
+            response: Response = RedirectResponse(url="/", status_code=303)
+        else:
+            response = templates.TemplateResponse(request, "index.html", {"version": __version__})
         response.set_cookie(
             "imr_intruder_token",
             page_token,
             httponly=True,
-            secure=False,
+            secure=request.url.scheme == "https",
             samesite="strict",
             max_age=JOB_TTL,
         )
@@ -402,9 +563,14 @@ def create_app(
     def health():
         return {"status": "ok", "version": __version__}
 
+    @app.get("/api/me")
+    def identity(request: Request):
+        name, role = authorize(request, "viewer")
+        return {"name": name, "role": role, "multiuser": app.state.multiuser}
+
     @app.post("/api/jobs")
     async def create_job(request: Request):
-        authorize(request, "operator")
+        owner, owner_role = authorize(request, "operator")
         try:
             length = int(request.headers.get("content-length", "0") or 0)
             if length > MAX_JOB_BODY_BYTES:
@@ -417,6 +583,15 @@ def create_app(
             raise HTTPException(400, "Request body must contain valid JSON.") from exc
         try:
             requests, columns, options = build_web_requests(payload)
+            outside_scope = [
+                urlsplit(item["url"]).hostname or "unknown"
+                for item in requests
+                if not target_in_scope(item["url"])
+            ]
+            if outside_scope:
+                raise ValueError(
+                    f"Target host is outside the configured web scope: {outside_scope[0]}"
+                )
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise HTTPException(400, str(exc)) from exc
         cleanup_jobs()
@@ -427,10 +602,25 @@ def create_app(
             )
             if active >= MAX_ACTIVE_JOBS:
                 raise HTTPException(429, "Too many active jobs.")
-            job = Job(uuid.uuid4().hex, requests, columns, options)
+            job = Job(
+                uuid.uuid4().hex,
+                requests,
+                columns,
+                options,
+                owner=owner,
+                owner_role=owner_role,
+            )
             app.state.jobs[job.id] = job
         threading.Thread(target=run_job, args=(job,), daemon=True).start()
         return JSONResponse({"job_id": job.id, "total": len(requests)}, status_code=202)
+
+    @app.get("/api/jobs")
+    def jobs(request: Request):
+        authorize(request, "viewer")
+        cleanup_jobs()
+        with app.state.lock:
+            rows = [job_summary(job) for job in app.state.jobs.values()]
+        return sorted(rows, key=lambda item: item["updated_at"], reverse=True)
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str, request: Request):
@@ -459,14 +649,16 @@ def create_app(
             nonlocal cursor
             while True:
                 with job.event_condition:
-                    if cursor >= len(job.events) and job.status not in {
+                    latest = job.events[-1]["sequence"] if job.events else 0
+                    if cursor >= latest and job.status not in {
                         "done",
                         "cancelled",
                         "error",
                     }:
                         job.event_condition.wait(timeout=15)
-                    batch = job.events[cursor:]
-                    cursor = len(job.events)
+                    batch = [event for event in job.events if event["sequence"] > cursor]
+                    if batch:
+                        cursor = batch[-1]["sequence"]
                     terminal = job.status in {"done", "cancelled", "error"}
                 for event in batch:
                     yield json.dumps(event, ensure_ascii=False) + "\n"
@@ -520,5 +712,197 @@ def create_app(
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{job_id}.csv"'},
         )
+
+    @app.get("/api/jobs/{job_id}/json")
+    def json_export(job_id: str, request: Request):
+        authorize(request, "viewer")
+        job = get_job(job_id)
+        return Response(
+            json.dumps(job.results, ensure_ascii=False, indent=2) + "\n",
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{job_id}.json"'},
+        )
+
+    @app.get("/api/jobs/{job_id}/jsonl")
+    def jsonl_export(job_id: str, request: Request):
+        authorize(request, "viewer")
+        content = "".join(
+            json.dumps(item, ensure_ascii=False) + "\n" for item in get_job(job_id).results
+        )
+        return Response(
+            content,
+            media_type="application/x-ndjson; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{job_id}.jsonl"'},
+        )
+
+    @app.get("/api/jobs/{job_id}/report")
+    def html_report(job_id: str, request: Request):
+        authorize(request, "viewer")
+        job = get_job(job_id)
+        with tempfile.TemporaryDirectory(prefix="imr-intruder-report-") as temporary:
+            path = build_html_report(
+                job.results,
+                Path(temporary) / "report.html",
+                f"imr-intruder · {job.requests[0].get('name') or job.id}",
+            )
+            content = path.read_text(encoding="utf-8")
+        return Response(
+            content,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{job_id}-report.html"'},
+        )
+
+    @app.get("/api/history")
+    def history(request: Request):
+        authorize(request, "viewer")
+        rows: list[dict[str, Any]] = []
+        for path in active_storage_directory("results").glob("*.json"):
+            record = read_json(path, default={}) or {}
+            if isinstance(record, dict):
+                rows.append({key: value for key, value in record.items() if key != "results"})
+        return sorted(rows, key=lambda item: float(item.get("updated_at", 0)), reverse=True)[:100]
+
+    @app.get("/api/history/{job_id}")
+    def history_item(job_id: str, request: Request):
+        _name, role = authorize(request, "viewer")
+        record = read_json(history_file(job_id))
+        if not isinstance(record, dict):
+            raise HTTPException(404, "History item not found.")
+        if role != "admin":
+            record = dict(record)
+            record.pop("requests", None)
+        return record
+
+    @app.delete("/api/history/{job_id}")
+    def delete_history(job_id: str, request: Request):
+        authorize(request, "operator")
+        path = history_file(job_id)
+        if not path.exists():
+            raise HTTPException(404, "History item not found.")
+        path.unlink()
+        return {"job_id": job_id, "deleted": True}
+
+    @app.get("/api/history/{job_id}/{format_name}")
+    def history_export(job_id: str, format_name: str, request: Request):
+        authorize(request, "viewer")
+        record = read_json(history_file(job_id))
+        if not isinstance(record, dict) or not isinstance(record.get("results"), list):
+            raise HTTPException(404, "History item not found.")
+        results = record["results"]
+        if format_name == "csv":
+            content = results_to_csv(results)
+            media_type = "text/csv; charset=utf-8"
+            extension = "csv"
+        elif format_name == "json":
+            content = json.dumps(results, ensure_ascii=False, indent=2) + "\n"
+            media_type = "application/json; charset=utf-8"
+            extension = "json"
+        elif format_name == "jsonl":
+            content = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in results)
+            media_type = "application/x-ndjson; charset=utf-8"
+            extension = "jsonl"
+        elif format_name == "report":
+            with tempfile.TemporaryDirectory(prefix="imr-intruder-report-") as temporary:
+                path = build_html_report(
+                    results,
+                    Path(temporary) / "report.html",
+                    f"imr-intruder · {record.get('name') or job_id}",
+                )
+                content = path.read_text(encoding="utf-8")
+            media_type = "text/html; charset=utf-8"
+            extension = "html"
+        else:
+            raise HTTPException(404, "Unsupported history export format.")
+        return Response(
+            content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{job_id}.{extension}"'},
+        )
+
+    @app.post("/api/import")
+    async def import_request(request: Request):
+        authorize(request, "operator")
+        raw = await request.body()
+        if len(raw) > MAX_JOB_BODY_BYTES:
+            raise HTTPException(413, "Import body exceeds 1 MiB.")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+            kind = str(payload.get("kind", "raw")).lower()
+            content = str(payload.get("content", ""))
+            if kind in {"raw", "burp", "zap"}:
+                imported = [parse_raw_request(content)]
+            elif kind == "curl":
+                imported = [parse_curl(content)]
+            elif kind == "har":
+                imported = parse_har(json.loads(content))
+            else:
+                raise ValueError(f"Unsupported import type: {kind}")
+        except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"requests": imported}
+
+    @app.get("/api/requests")
+    def saved_requests(request: Request):
+        authorize(request, "operator")
+        return sorted(path.stem for path in active_storage_directory("requests").glob("*.json"))
+
+    @app.get("/api/requests/{name}")
+    def saved_request(name: str, request: Request):
+        authorize(request, "operator")
+        data = read_json(request_file(name))
+        if not isinstance(data, dict):
+            raise HTTPException(404, "Saved request not found.")
+        return data
+
+    @app.put("/api/requests/{name}")
+    async def save_request(name: str, request: Request):
+        authorize(request, "operator")
+        raw = await request.body()
+        if len(raw) > MAX_JOB_BODY_BYTES:
+            raise HTTPException(413, "Saved request exceeds 1 MiB.")
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("Saved request must be a JSON object.")
+            path = request_file(name)
+            atomic_json_write(path, data)
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"name": path.stem, "saved": True}
+
+    @app.delete("/api/requests/{name}")
+    def delete_saved_request(name: str, request: Request):
+        authorize(request, "operator")
+        path = request_file(name)
+        if not path.exists():
+            raise HTTPException(404, "Saved request not found.")
+        path.unlink()
+        return {"name": name, "deleted": True}
+
+    @app.get("/api/sessions")
+    def sessions(request: Request):
+        authorize(request, "operator")
+        return list_sessions()
+
+    @app.get("/api/workspaces")
+    def workspaces(request: Request):
+        authorize(request, "viewer")
+        return {"current": current_workspace(), "items": list_workspaces()}
+
+    @app.post("/api/workspaces")
+    async def change_workspace(request: Request):
+        authorize(request, "operator")
+        try:
+            payload = json.loads((await request.body()).decode("utf-8"))
+            name = str(payload.get("name", "")).strip()
+            if not name:
+                clear_current_workspace()
+                return {"current": None}
+            if _as_bool(payload, "create", False) and name not in list_workspaces():
+                create_workspace(name)
+            set_current_workspace(name)
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"current": name}
 
     return app

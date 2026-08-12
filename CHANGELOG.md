@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.5.0
+
+- Added persistent CLI/web run history with `history list/show/replay/delete`, active-job browser reconnection, workspace-aware request libraries, and saved-request management.
+- Added web import for cURL, raw HTTP, HAR, Burp, and ZAP requests; session, proxy, Basic/Bearer authentication, multipart-field, copy-as-cURL, and extended HTTP method controls.
+- Added sortable responsive results, extracted fields and match badges, structured evidence tabs, bounded 500-row rendering, and CSV/JSON/JSONL/redacted-HTML exports for current and historical jobs.
+- Added CLI `--format table|json|jsonl|csv`, stderr error routing, bounded executor submission, and automatic workspace-aware result persistence.
+- Fixed regex response columns after streamed reads, full-body hashing for truncated responses, duplicate URL/form parameters, macro cookie propagation, raw `Host` case handling, batch-option precedence, and unsafe `.`/`..` storage names.
+- Prevented secret payloads from leaking through generated names, request URLs, response locations, custom URL columns, history summaries, or CSV evidence.
+- Hardened remote web operation with required scope allowlists, expiring collaboration tokens, real displayed identities, read-only viewer controls, secure-cookie awareness, stale-job cancellation, IPv6 listener URLs, and tokens removed from process arguments and status records.
+- Expanded the regression suite from 86 to 101 tests before release packaging.
+
 ## 1.4.6
 
 - Published a stable GitHub release for Linux updates, verified the activated version after installation, and stopped stale web-console processes during updates so old code cannot remain in service.

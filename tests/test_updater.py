@@ -50,6 +50,6 @@ class UpdaterTests(unittest.TestCase):
             }
             with patch.dict("os.environ", environment):
                 with self.assertRaisesRegex(RuntimeError, "still 1.3.3"):
-                    _verify_active_version("1.4.6")
-                (home / "current-version").write_text("1.4.6\n", encoding="utf-8")
-                self.assertEqual(_verify_active_version("1.4.6"), "1.4.6")
+                    _verify_active_version("1.5.0")
+                (home / "current-version").write_text("1.5.0\n", encoding="utf-8")
+                self.assertEqual(_verify_active_version("1.5.0"), "1.5.0")

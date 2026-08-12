@@ -5,6 +5,8 @@ import os
 import re
 import tarfile
 import tempfile
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,7 +17,7 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
 
 
 def safe_name(value: str, label: str = "name") -> str:
-    if not _SAFE_NAME.fullmatch(value):
+    if value in {".", ".."} or not _SAFE_NAME.fullmatch(value):
         raise ValueError(f"Invalid {label}; use letters, numbers, dot, underscore, or hyphen.")
     return value
 
@@ -145,6 +147,84 @@ def current_workspace() -> str | None:
     except FileNotFoundError:
         return None
     return value or None
+
+
+def clear_current_workspace() -> None:
+    (ensure_paths().config / "current_workspace").unlink(missing_ok=True)
+
+
+def active_storage_directory(kind: str) -> Path:
+    """Resolve request/results storage through the selected workspace when possible."""
+    if kind not in {"requests", "results"}:
+        raise ValueError(f"Unsupported storage directory: {kind}")
+    selected = current_workspace()
+    if selected:
+        root = workspace_path(selected)
+        destination = root / kind
+        if destination.is_dir():
+            return destination
+    paths = ensure_paths()
+    return paths.requests if kind == "requests" else paths.history
+
+
+def save_history_record(
+    requests: list[dict[str, Any]],
+    results: list[dict[str, Any]],
+    *,
+    job_id: str | None = None,
+    owner: str = "local",
+    owner_role: str = "admin",
+    status: str | None = None,
+) -> Path:
+    identifier = safe_name(job_id or uuid.uuid4().hex, "job id")
+    completed_at = time.time()
+    first_request = requests[0] if requests else {}
+    first_result = results[0] if results else {}
+    resolved_status = status or ("error" if any(item.get("error") for item in results) else "done")
+    record = {
+        "job_id": identifier,
+        "name": str(first_request.get("name") or first_result.get("name") or "Untitled request"),
+        "target": str(first_result.get("url") or ""),
+        "status": resolved_status,
+        "total": len(requests),
+        "completed": len(results),
+        "owner": owner,
+        "owner_role": owner_role,
+        "created_at": completed_at,
+        "updated_at": completed_at,
+        "requests": requests,
+        "results": results,
+    }
+    path = active_storage_directory("results") / f"{identifier}.json"
+    atomic_json_write(path, record)
+    return path
+
+
+def list_history_records() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in active_storage_directory("results").glob("*.json"):
+        record = read_json(path, default={}) or {}
+        if isinstance(record, dict):
+            rows.append(
+                {key: value for key, value in record.items() if key not in {"requests", "results"}}
+            )
+    return sorted(rows, key=lambda item: float(item.get("updated_at", 0)), reverse=True)
+
+
+def load_history_record(job_id: str) -> dict[str, Any]:
+    path = active_storage_directory("results") / f"{safe_name(job_id, 'job id')}.json"
+    record = read_json(path)
+    if not isinstance(record, dict):
+        raise ValueError(f"History item not found: {job_id}")
+    return record
+
+
+def delete_history_record(job_id: str) -> None:
+    path = active_storage_directory("results") / f"{safe_name(job_id, 'job id')}.json"
+    try:
+        path.unlink()
+    except FileNotFoundError as exc:
+        raise ValueError(f"History item not found: {job_id}") from exc
 
 
 def export_workspace(name: str, destination: Path) -> Path:

@@ -22,6 +22,11 @@ def _is_loopback(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
+def _url(host: str, port: int) -> str:
+    formatted = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    return f"http://{formatted}:{port}"
+
+
 def _state() -> dict[str, Any] | None:
     return read_json(ensure_paths().web_state)
 
@@ -70,7 +75,12 @@ def status() -> dict[str, Any]:
     running = _alive(int(state.get("pid", 0))) and _health(state.get("url", ""))
     if not running and ensure_paths().web_state.exists():
         ensure_paths().web_state.unlink(missing_ok=True)
-    return {**state, "running": running}
+    # Older versions stored the bootstrap token in web.json. Never echo legacy
+    # secrets (including a token-bearing bootstrap URL) from the status command.
+    public_state = {
+        key: value for key, value in state.items() if key not in {"token", "bootstrap_url"}
+    }
+    return {**public_state, "running": running}
 
 
 def serve(
@@ -80,18 +90,26 @@ def serve(
     allow_remote: bool,
     multiuser: bool,
     open_browser: bool,
+    allowed_hosts: list[str] | None = None,
 ) -> int:
     if not _is_loopback(host) and not allow_remote:
         raise ValueError("Non-loopback binding requires --allow-remote.")
+    if not _is_loopback(host) and not allowed_hosts:
+        raise ValueError("Remote binding requires at least one --scope target host or CIDR.")
     import uvicorn
 
     from .web import create_app
 
-    url = f"http://{host}:{port}"
+    url = _url(host, port)
     if open_browser:
         webbrowser.open(url + (f"/?token={token}" if allow_remote else ""))
     uvicorn.run(
-        create_app(token, require_page_token=allow_remote, multiuser=multiuser),
+        create_app(
+            token,
+            require_page_token=allow_remote,
+            multiuser=multiuser,
+            allowed_hosts=allowed_hosts,
+        ),
         host=host,
         port=port,
         log_level="info",
@@ -100,13 +118,24 @@ def serve(
 
 
 def start_background(
-    host: str, port: int, token: str | None, allow_remote: bool, multiuser: bool
+    host: str,
+    port: int,
+    token: str | None,
+    allow_remote: bool,
+    multiuser: bool,
+    allowed_hosts: list[str] | None = None,
 ) -> dict[str, Any]:
-    existing = status()
-    if existing.get("running"):
-        return existing
     if not _is_loopback(host) and not allow_remote:
         raise ValueError("Non-loopback binding requires --allow-remote.")
+    if not _is_loopback(host) and not allowed_hosts:
+        raise ValueError("Remote binding requires at least one --scope target host or CIDR.")
+    existing = status()
+    if existing.get("running"):
+        if existing.get("host") != host or int(existing.get("port", 0)) != port:
+            raise RuntimeError(
+                f"Web console is already running at {existing.get('url')}; stop it before changing the listener."
+            )
+        return existing
     token = token or secrets.token_urlsafe(32)
     paths = ensure_paths()
     command = [
@@ -116,7 +145,6 @@ def start_background(
         "_web-serve",
         f"--host={host}",
         f"--port={port}",
-        f"--token={token}",
         f"--pid-file={paths.web_pid}",
     ]
     paths.web_pid.unlink(missing_ok=True)
@@ -124,12 +152,15 @@ def start_background(
         command.append("--allow-remote")
     if multiuser:
         command.append("--multiuser")
+    for allowed_host in allowed_hosts or []:
+        command.extend(["--scope", allowed_host])
     log = paths.web_log.open("a", encoding="utf-8")
     kwargs: dict[str, Any] = {
         "stdout": log,
         "stderr": subprocess.STDOUT,
         "stdin": subprocess.DEVNULL,
         "close_fds": True,
+        "env": {**os.environ, "IMR_INTRUDER_WEB_RUNTIME_TOKEN": token},
     }
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
@@ -140,16 +171,17 @@ def start_background(
         _BACKGROUND_PROCESSES[process.pid] = process
     finally:
         log.close()
-    url = f"http://{host}:{port}"
+    url = _url(host, port)
     state_data = {
         "pid": process.pid,
         "host": host,
         "port": port,
         "url": url,
-        "token": token,
         "multiuser": multiuser,
+        "scope": allowed_hosts or [],
         "log": str(paths.web_log),
     }
+    atomic_json_write(paths.web_token, {"token": token})
     atomic_json_write(paths.web_state, state_data)
     for attempt in range(100):
         child_state = read_json(paths.web_pid, default={}) or {}
@@ -159,7 +191,10 @@ def start_background(
                 state_data["pid"] = child_pid
                 _BACKGROUND_PROCESSES[child_pid] = process
             atomic_json_write(paths.web_state, state_data)
-            return {**state_data, "running": True}
+            result = {**state_data, "running": True}
+            if allow_remote:
+                result["bootstrap_url"] = f"{url}/?token={token}"
+            return result
         if process.poll() is not None and attempt >= 20 and child_pid <= 0:
             break
         time.sleep(0.1)
@@ -183,6 +218,7 @@ def stop() -> dict[str, Any]:
         paths = ensure_paths()
         paths.web_state.unlink(missing_ok=True)
         paths.web_pid.unlink(missing_ok=True)
+        paths.web_token.unlink(missing_ok=True)
         return {"stopped": False, "reason": "stale state removed", "pid": pid}
     if _alive(pid):
         try:
@@ -207,6 +243,7 @@ def stop() -> dict[str, Any]:
     paths = ensure_paths()
     paths.web_state.unlink(missing_ok=True)
     paths.web_pid.unlink(missing_ok=True)
+    paths.web_token.unlink(missing_ok=True)
     return {"stopped": True, "pid": pid}
 
 
@@ -216,6 +253,10 @@ def open_ui() -> str:
         raise RuntimeError("Web console is not running.")
     url = state["url"]
     if not _is_loopback(state.get("host", "")):
-        url += f"/?token={state['token']}"
+        token_data = read_json(ensure_paths().web_token, default={}) or {}
+        token = str(token_data.get("token", "")) if isinstance(token_data, dict) else ""
+        if not token:
+            raise RuntimeError("Web bootstrap token is unavailable; restart the console.")
+        url += f"/?token={token}"
     webbrowser.open(url)
     return url

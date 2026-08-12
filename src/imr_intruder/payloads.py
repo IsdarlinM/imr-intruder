@@ -8,6 +8,9 @@ from copy import deepcopy
 from typing import Any
 
 _TOKEN = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
+_SECRET_NAME = re.compile(
+    r"(?:pass(?:word)?|secret|token|api[_-]?key|authorization|cookie|session|csrf)", re.I
+)
 
 
 def placeholders(value: Any) -> set[str]:
@@ -119,7 +122,11 @@ def build_requests(
     for index, variables in enumerate(assignments, start=1):
         rendered = render(deepcopy(base_request), variables)
         generated_name = (
-            ",".join(f"{key}={value}" for key, value in variables.items()) or f"request-{index}"
+            ",".join(
+                f"{key}={'<REDACTED>' if _SECRET_NAME.search(key) else value}"
+                for key, value in variables.items()
+            )
+            or f"request-{index}"
         )
         if not explicit_name or explicit_name == "request-1":
             rendered["name"] = generated_name

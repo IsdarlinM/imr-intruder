@@ -72,6 +72,7 @@ class CommandTests(unittest.TestCase):
             "import",
             "session",
             "workspace",
+            "history",
             "report",
             "macro",
             "websocket",

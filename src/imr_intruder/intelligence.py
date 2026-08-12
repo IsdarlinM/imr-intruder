@@ -174,12 +174,30 @@ def enrich_results(
         baseline.get("body_preview", ""), baseline.get("content_type", "")
     )
     compare = len(valid) > 1
-    clusters: list[tuple[str, str]] = []
+    clusters: list[tuple[str, str, str, bool]] = []
 
     for result in valid:
         normalized = normalize_body(result.get("body_preview", ""), result.get("content_type", ""))
-        result["body_hash"] = hashlib.sha256(normalized.encode()).hexdigest()
-        result["similarity"] = similarity(baseline_normalized, normalized) if compare else None
+        preview_hash = hashlib.sha256(normalized.encode()).hexdigest()
+        truncated = bool(result.get("body_truncated"))
+        full_hash = str(result.get("response_body_sha256") or preview_hash)
+        result["body_hash"] = full_hash if truncated else preview_hash
+        if compare:
+            baseline_truncated = bool(baseline.get("body_truncated"))
+            baseline_full_hash = str(baseline.get("response_body_sha256") or "")
+            if truncated or baseline_truncated:
+                result["similarity"] = (
+                    100.0 if full_hash and full_hash == baseline_full_hash else None
+                )
+                result["similarity_basis"] = (
+                    "full_hash" if result["similarity"] == 100.0 else "unavailable_truncated"
+                )
+            else:
+                result["similarity"] = similarity(baseline_normalized, normalized)
+                result["similarity_basis"] = "normalized_body"
+        else:
+            result["similarity"] = None
+            result["similarity_basis"] = "single_response"
         result["delta_bytes"] = (
             result.get("size_bytes", 0) - baseline.get("size_bytes", 0) if compare else None
         )
@@ -193,13 +211,23 @@ def enrich_results(
 
         if compare:
             cluster_id = None
-            for existing_id, representative in clusters:
-                if similarity(representative, normalized) >= cluster_threshold:
+            for (
+                existing_id,
+                representative,
+                representative_hash,
+                representative_truncated,
+            ) in clusters:
+                comparable = (
+                    full_hash == representative_hash
+                    if truncated or representative_truncated
+                    else similarity(representative, normalized) >= cluster_threshold
+                )
+                if comparable:
                     cluster_id = existing_id
                     break
             if cluster_id is None:
                 cluster_id = f"C{len(clusters) + 1}"
-                clusters.append((cluster_id, normalized))
+                clusters.append((cluster_id, normalized, full_hash, truncated))
             result["cluster"] = cluster_id
         else:
             result["cluster"] = None
@@ -220,6 +248,11 @@ def enrich_results(
         rarity = 1.0 / status_counts[result.get("status")]
         size_z = abs(float(result.get("size_bytes", 0)) - mean_size) / std_size
         time_z = abs(float(result.get("elapsed_ms", 0)) - mean_time) / std_time
-        similarity_component = max(0.0, 100.0 - float(result.get("similarity", 100.0))) / 25.0
+        similarity_value = result.get("similarity")
+        similarity_component = (
+            max(0.0, 100.0 - float(similarity_value)) / 25.0
+            if similarity_value is not None
+            else 0.0
+        )
         result["anomaly_score"] = round(size_z + time_z + similarity_component + rarity, 2)
     return results

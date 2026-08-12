@@ -46,7 +46,12 @@ Output is a batch-compatible JSON file. The cURL importer accepts request/header
 Creates, lists, displays, updates, and deletes persistent session configuration. Cookies and authentication data are hidden unless explicitly requested.
 
 ### `workspace`
-Creates and selects isolated project directories and exports them as compressed archives.
+Creates and selects isolated project directories and exports them as compressed archives. A selected workspace now owns its saved-request library and run history.
+
+### `history`
+Lists, shows, replays, and deletes automatically persisted CLI/web executions. `history replay JOB_ID` sends the stored request configurations through the current engine.
+
+All request-execution commands accept `--format table|json|jsonl|csv`. Structured formats write machine-readable results to stdout while errors use stderr.
 
 ### `macro`
 Runs ordered request steps, extracts variables, and stores variables in a session.
@@ -87,7 +92,7 @@ web open
 web stop
 ```
 
-Remote listening requires `--allow-remote`. Multiuser role tokens are managed with `collab`.
+Remote listening requires `--allow-remote` and at least one `--scope` host, wildcard, or CIDR. Multiuser role tokens are managed with `collab` and expire after seven days by default unless another `--expires-hours` value is selected.
 
 ## Update lifecycle
 

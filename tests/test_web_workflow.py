@@ -76,7 +76,7 @@ class WebWorkflowTests(unittest.TestCase):
 
     def setUp(self):
         self.token = "workflow-token"
-        self.client = TestClient(create_app(self.token))
+        self.client = TestClient(create_app(self.token, persist_history=False))
         self.headers = {"X-Request-Token": self.token}
 
     def test_form_query_string_is_split_into_fields(self):
@@ -214,6 +214,19 @@ class WebWorkflowTests(unittest.TestCase):
             "search",
             "statusFilter",
             "differenceOnly",
+            "importButton",
+            "saveButton",
+            "copyCurlButton",
+            "jsonLink",
+            "jsonlLink",
+            "reportLink",
+            "session",
+            "proxy",
+            "authType",
+            "libraryWorkspace",
+            "historyWorkspace",
+            "workspaceSelect",
+            "importDialog",
         ):
             self.assertIn(f'id="{control}"', html)
         for action in (
@@ -221,12 +234,22 @@ class WebWorkflowTests(unittest.TestCase):
             "elements.pause.addEventListener",
             "elements.cancel.addEventListener",
             "elements.drawerClose.addEventListener",
+            "elements.importButton.addEventListener",
+            "elements.saveButton.addEventListener",
         ):
             self.assertIn(action, js)
         self.assertIn('api("/api/jobs"', js)
         self.assertIn('event.event === "snapshot"', js)
         self.assertIn("validatePayload", js)
+        self.assertIn("reconnectActiveJob", js)
+        self.assertIn("loadHistory", js)
+        self.assertIn("loadLibrary", js)
+        self.assertIn("importIntoBuilder", js)
         self.assertNotIn("/csv?token=", js)
+        run_body = js.split("async function run()", 1)[1].split("async function pauseResume()", 1)[
+            0
+        ]
+        self.assertLess(run_body.index("validatePayload"), run_body.index("resetRun"))
 
     def test_professional_workbench_structure_is_accessible(self):
         html = (ROOT / "src" / "imr_intruder" / "templates" / "index.html").read_text(

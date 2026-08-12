@@ -237,6 +237,23 @@ class CliWorkflowTests(unittest.TestCase):
         self.assertEqual(self.invoke(["workspace", "list", "--json"]), 0)
         self.assertEqual(self.invoke(["session", "delete", "typed"]), 0)
 
+    def test_history_lifecycle_and_structured_stdout(self):
+        output = StringIO()
+        with redirect_stdout(output), redirect_stderr(output):
+            self.assertEqual(
+                main(["request", "--url", self.url + "/history", "--format", "json"]),
+                0,
+            )
+        self.assertEqual(json.loads(output.getvalue())[0]["status"], 200)
+        history_dir = self.root / "data" / "history"
+        records = list(history_dir.glob("*.json"))
+        self.assertEqual(len(records), 1)
+        job_id = records[0].stem
+        self.assertEqual(self.invoke(["history", "list", "--json"]), 0)
+        self.assertEqual(self.invoke(["history", "show", job_id]), 0)
+        self.assertEqual(self.invoke(["history", "replay", job_id, "--quiet"]), 0)
+        self.assertEqual(self.invoke(["history", "delete", job_id]), 0)
+
     def test_update_dispatchers_with_mocked_network(self):
         from types import SimpleNamespace
 
@@ -265,7 +282,7 @@ class CliWorkflowTests(unittest.TestCase):
         from types import SimpleNamespace
 
         available = SimpleNamespace(
-            current="1.3.3", latest="1.4.6", available=True, source="release"
+            current="1.3.3", latest="1.5.0", available=True, source="release"
         )
         with (
             patch("imr_intruder.cli_actions.check_update", return_value=available),
@@ -273,7 +290,7 @@ class CliWorkflowTests(unittest.TestCase):
             patch("imr_intruder.cli_actions.web_stop") as stop,
             patch(
                 "imr_intruder.cli_actions.install_update",
-                return_value={"installed": True, "version": "1.4.6"},
+                return_value={"installed": True, "version": "1.5.0"},
             ),
         ):
             self.assertEqual(self.invoke(["update"]), 0)
@@ -288,6 +305,7 @@ class CliWorkflowTests(unittest.TestCase):
             ["import"],
             ["session"],
             ["workspace"],
+            ["history"],
             ["report"],
             ["macro"],
             ["websocket"],
@@ -310,6 +328,10 @@ class CliWorkflowTests(unittest.TestCase):
             ["workspace", "use"],
             ["workspace", "show"],
             ["workspace", "export"],
+            ["history", "list"],
+            ["history", "show"],
+            ["history", "delete"],
+            ["history", "replay"],
             ["collab", "create-token"],
             ["collab", "list"],
             ["collab", "revoke"],

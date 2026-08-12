@@ -9,6 +9,7 @@ from .cli_actions import (
     cmd_check_update,
     cmd_collab,
     cmd_doctor,
+    cmd_history,
     cmd_import,
     cmd_macro,
     cmd_plugins,
@@ -76,23 +77,44 @@ def add_http_options(parser: argparse.ArgumentParser, require_url: bool = True) 
     parser.add_argument("--http2", action="store_true")
 
 
-def add_execution_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--workers", type=int_range(1, 32), default=1)
-    parser.add_argument("--delay-ms", type=int_range(0, 3_600_000), default=0)
-    parser.add_argument("--rate", type=float_range(0.0, 10000.0, exclusive_minimum=True))
-    parser.add_argument("--retries", type=int_range(0, 5), default=0)
-    parser.add_argument("--backoff", action="store_true")
-    parser.add_argument("--body-limit", type=int_range(1, 100 * 1024 * 1024), default=1024 * 1024)
-    parser.add_argument("--checkpoint")
-    parser.add_argument("--column", action="append", default=[])
-    parser.add_argument("--match", action="append", default=[])
-    parser.add_argument("--exclude", action="append", default=[])
-    parser.add_argument("--extract", action="append", default=[])
-    parser.add_argument("--cluster-threshold", type=float_range(0.0, 100.0), default=98.0)
-    parser.add_argument("--csv")
-    parser.add_argument("--jsonl")
-    parser.add_argument("--output-json")
-    parser.add_argument("--quiet", action="store_true")
+def add_execution_options(parser: argparse.ArgumentParser, *, use_defaults: bool = True) -> None:
+    def selected(value: Any) -> Any:
+        return value if use_defaults else argparse.SUPPRESS
+
+    parser.add_argument("--workers", type=int_range(1, 32), default=selected(1))
+    parser.add_argument("--delay-ms", type=int_range(0, 3_600_000), default=selected(0))
+    parser.add_argument(
+        "--rate",
+        type=float_range(0.0, 10000.0, exclusive_minimum=True),
+        default=selected(None),
+    )
+    parser.add_argument("--retries", type=int_range(0, 5), default=selected(0))
+    parser.add_argument("--backoff", action="store_true", default=selected(False))
+    parser.add_argument(
+        "--body-limit",
+        type=int_range(1, 100 * 1024 * 1024),
+        default=selected(1024 * 1024),
+    )
+    parser.add_argument("--checkpoint", default=selected(None))
+    parser.add_argument("--column", action="append", default=selected([]))
+    parser.add_argument("--match", action="append", default=selected([]))
+    parser.add_argument("--exclude", action="append", default=selected([]))
+    parser.add_argument("--extract", action="append", default=selected([]))
+    parser.add_argument(
+        "--cluster-threshold",
+        type=float_range(0.0, 100.0),
+        default=selected(98.0),
+    )
+    parser.add_argument("--csv", default=selected(None))
+    parser.add_argument("--jsonl", default=selected(None))
+    parser.add_argument("--output-json", default=selected(None))
+    parser.add_argument(
+        "--format",
+        choices=["table", "json", "jsonl", "csv"],
+        default=selected("table"),
+        help="Terminal output format",
+    )
+    parser.add_argument("--quiet", action="store_true", default=selected(False))
 
 
 def parser_defaults() -> dict[str, Any]:
@@ -133,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     batch = sub.add_parser("batch", help="Execute requests from JSON config")
     batch.add_argument("config")
-    add_execution_options(batch)
+    add_execution_options(batch, use_defaults=False)
     batch.set_defaults(func=cmd_batch)
 
     repeater = sub.add_parser("repeater", help="Repeat an imported request")
@@ -182,6 +204,20 @@ def build_parser() -> argparse.ArgumentParser:
     child.add_argument("--output", "-o", required=True)
     workspace.set_defaults(func=cmd_workspace)
 
+    history = sub.add_parser("history", help="List, inspect, delete, or replay run history")
+    history_sub = history.add_subparsers(dest="history_action", required=True)
+    child = history_sub.add_parser("list")
+    child.add_argument("--json", dest="json_output", action="store_true")
+    child = history_sub.add_parser("show")
+    child.add_argument("job_id")
+    child.add_argument("--show-requests", action="store_true")
+    child = history_sub.add_parser("delete")
+    child.add_argument("job_id")
+    child = history_sub.add_parser("replay")
+    child.add_argument("job_id")
+    add_execution_options(child)
+    history.set_defaults(func=cmd_history)
+
     report = sub.add_parser("report", help="Build a redacted HTML report")
     report.add_argument("input")
     report.add_argument("--output", "-o", required=True)
@@ -216,6 +252,12 @@ def build_parser() -> argparse.ArgumentParser:
     child = collab_sub.add_parser("create-token")
     child.add_argument("name")
     child.add_argument("--role", choices=["viewer", "operator", "admin"], required=True)
+    child.add_argument(
+        "--expires-hours",
+        type=int_range(1, 8760),
+        default=168,
+        help="Token lifetime; default 168 hours",
+    )
     collab_sub.add_parser("list")
     child = collab_sub.add_parser("revoke")
     child.add_argument("name")
@@ -233,6 +275,12 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--token")
     web.add_argument("--allow-remote", action="store_true")
     web.add_argument("--multiuser", action="store_true")
+    web.add_argument(
+        "--scope",
+        action="append",
+        default=[],
+        help="Allowed target host, wildcard, or CIDR; repeat as needed",
+    )
     web.add_argument("--background", action="store_true")
     web.add_argument("--no-browser", action="store_true")
     web.set_defaults(func=cmd_web)

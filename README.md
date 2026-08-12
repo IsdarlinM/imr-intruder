@@ -4,7 +4,7 @@
 
 ```text
 imr-intruder
-imr :: v1.4.6
+imr :: v1.5.0
 ```
 
 ## Requirements
@@ -75,6 +75,7 @@ imr-intruder repeater
 imr-intruder import
 imr-intruder session
 imr-intruder workspace
+imr-intruder history
 imr-intruder report
 imr-intruder macro
 imr-intruder websocket
@@ -197,6 +198,22 @@ imr-intruder workspace use assessment
 imr-intruder workspace export assessment --output assessment.tar.gz
 ```
 
+Requests executed by the CLI and web console are recorded automatically. When a workspace is selected, its request library and result history are isolated inside that workspace:
+
+```bash
+imr-intruder history list
+imr-intruder history show JOB_ID
+imr-intruder history replay JOB_ID --workers 2
+imr-intruder history delete JOB_ID
+```
+
+For scripts and pipelines, choose a stable stdout format:
+
+```bash
+imr-intruder request --url https://example.test/ --format json
+imr-intruder intrude --url 'https://example.test/?q={{VALUE}}' --values-file values.txt --format jsonl
+```
+
 Session files use restrictive permissions. Secret fields are redacted by default when displayed.
 
 ## Macros
@@ -230,7 +247,7 @@ Default URL:
 http://127.0.0.1:7415
 ```
 
-The web console provides a responsive HTTP workbench with live results, payload modes, response intelligence, search, filters, an accessible evidence drawer, pause/resume, cancellation, replayable event streams, CSV export, keyboard navigation, and dark/light mode. Rate, response-preview, and clustering controls are available directly in the request builder.
+The web console provides a responsive HTTP workbench with persistent workspaces, saved request libraries, cURL/raw/HAR/Burp/ZAP import, recoverable run history, live results, payload modes, response intelligence, search, sortable filters, a structured evidence drawer, pause/resume, cancellation, replayable event streams, CSV/JSON/JSONL/HTML export, keyboard navigation, and dark/light mode. Sessions, proxy routing, Basic/Bearer authentication, multipart fields, rate, response-preview, and clustering controls are available directly in the request builder.
 
 The **Run scan** workflow validates the target locally, creates a job with `POST /api/jobs`, streams replayable NDJSON events from `/api/jobs/{id}/events?after=<sequence>`, replaces provisional rows with the enriched final snapshot, and enables CSV only for the active job. Form bodies may be entered as either `username={{USER}}&password=fixed` or one field per line. Click a row to inspect the effective request headers, final URL, redacted request body, response headers, preview, outcome, and error classification.
 
@@ -239,15 +256,17 @@ Complete web workflow and control map: [docs/WEB_CONSOLE.md](docs/WEB_CONSOLE.md
 Remote binding requires explicit authorization:
 
 ```bash
-imr-intruder web start --host 0.0.0.0 --allow-remote --multiuser --background
+imr-intruder web start --host 0.0.0.0 --allow-remote --multiuser --scope target.example --background
 ```
 
 Create role-based tokens:
 
 ```bash
-imr-intruder collab create-token analyst --role operator
+imr-intruder collab create-token analyst --role operator --expires-hours 24
 imr-intruder collab list
 ```
+
+Remote binding requires at least one repeated `--scope HOST`, wildcard such as `*.lab.example`, or CIDR. The background token is passed through the child environment instead of the process command line and is not returned by `web status`.
 
 ## Updates without cloning again
 

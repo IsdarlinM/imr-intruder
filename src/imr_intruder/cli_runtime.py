@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qsl
@@ -12,10 +13,11 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from .core import parse_columns, run_requests, write_csv, write_jsonl
+from .core import parse_columns, results_to_csv, run_requests, write_csv, write_jsonl
 from .payloads import build_requests
 from .storage import (
     load_session,
+    save_history_record,
 )
 
 console = Console()
@@ -41,16 +43,28 @@ def _parse_key_values(values: Iterable[str], *, header: bool = False) -> dict[st
     return result
 
 
-def _parse_urlencoded_values(values: Iterable[str]) -> dict[str, str]:
-    result: dict[str, str] = {}
+def _store_multivalue(result: dict[str, Any], key: str, value: str) -> None:
+    existing = result.get(key)
+    if existing is None:
+        result[key] = value
+    elif isinstance(existing, list):
+        existing.append(value)
+    else:
+        result[key] = [existing, value]
+
+
+def _parse_urlencoded_values(values: Iterable[str]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
     for item in values:
         if "&" in item:
             pairs = parse_qsl(item, keep_blank_values=True, strict_parsing=False)
             if not pairs:
                 raise ValueError(f"Invalid URL-encoded value: {item}")
-            result.update((str(key), str(value)) for key, value in pairs)
+            for key, value in pairs:
+                _store_multivalue(result, str(key), str(value))
         else:
-            result.update(_parse_key_values([item]))
+            for key, value in _parse_key_values([item]).items():
+                _store_multivalue(result, key, value)
     return result
 
 
@@ -187,7 +201,8 @@ def _run(args: argparse.Namespace, requests: list[dict[str, Any]]) -> list[dict[
     columns = parse_columns(args.column or [])
     current: list[dict[str, Any]] = []
     callback = None
-    if not args.quiet:
+    live_enabled = not args.quiet and args.format == "table"
+    if live_enabled:
         live = Live(
             _table(current, len(requests)),
             console=console,
@@ -217,7 +232,7 @@ def _run(args: argparse.Namespace, requests: list[dict[str, Any]]) -> list[dict[
             extract_rules=_parse_key_values(args.extract or []),
             cluster_threshold=args.cluster_threshold,
         )
-        if not args.quiet:
+        if live_enabled:
             live.update(_table(results, len(requests)), refresh=True)
         if args.csv:
             write_csv(Path(args.csv), results)
@@ -230,9 +245,18 @@ def _run(args: argparse.Namespace, requests: list[dict[str, Any]]) -> list[dict[
                 json.dumps(results, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+        save_history_record(requests, results)
+        if not args.quiet and args.format != "table":
+            if args.format == "json":
+                sys.stdout.write(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+            elif args.format == "jsonl":
+                for item in results:
+                    sys.stdout.write(json.dumps(item, ensure_ascii=False) + "\n")
+            elif args.format == "csv":
+                sys.stdout.write(results_to_csv(results))
         return results
     finally:
-        if not args.quiet:
+        if live_enabled:
             live.stop()
 
 
@@ -258,11 +282,29 @@ def cmd_batch(args: argparse.Namespace) -> int:
     requests = config.get("requests") if isinstance(config, dict) else None
     if not isinstance(requests, list) or not requests:
         raise ValueError("Batch config requires a non-empty requests list.")
-    if config.get("columns") and not args.column:
-        args.column = config["columns"]
-    for key in ("workers", "delay_ms", "retries", "backoff", "cluster_threshold"):
-        if key in config and getattr(args, key, None) == parser_defaults().get(key):
-            setattr(args, key, config[key])
+    defaults: dict[str, Any] = {
+        "workers": 1,
+        "delay_ms": 0,
+        "rate": None,
+        "retries": 0,
+        "backoff": False,
+        "body_limit": 1024 * 1024,
+        "checkpoint": None,
+        "column": [],
+        "match": [],
+        "exclude": [],
+        "extract": [],
+        "cluster_threshold": 98.0,
+        "csv": None,
+        "jsonl": None,
+        "output_json": None,
+        "format": "table",
+        "quiet": False,
+    }
+    config_keys = {"column": "columns"}
+    for key, default in defaults.items():
+        if not hasattr(args, key):
+            setattr(args, key, config.get(config_keys.get(key, key), default))
     results = _run(args, requests)
     return 1 if any(item.get("error") for item in results) else 0
 

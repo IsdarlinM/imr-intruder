@@ -9,10 +9,10 @@ import random
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Callable, Iterable
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -114,6 +114,27 @@ def redact_headers(headers: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def redact_url(value: str) -> str:
+    """Redact credentials and secret-like query values from evidence surfaces."""
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return value
+    netloc = parsed.netloc
+    if "@" in netloc:
+        userinfo, hostinfo = netloc.rsplit("@", 1)
+        username, separator, _password = userinfo.partition(":")
+        netloc = f"{username}:<REDACTED>@{hostinfo}" if separator else netloc
+    query = urlencode(
+        [
+            (key, "<REDACTED>" if _SECRET_FIELD_RE.search(key) else item)
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+        ],
+        doseq=True,
+    )
+    return urlunsplit((parsed.scheme, netloc, parsed.path, query, parsed.fragment))
+
+
 def validate_http_url(value: Any) -> str:
     url = str(value).strip()
     if not url or any(character.isspace() for character in url):
@@ -183,6 +204,7 @@ def _extract_column(
     response: httpx.Response,
     request_cfg: dict[str, Any],
     parsed_json: Any,
+    response_text: str,
 ) -> str:
     source, key = column["source"], column["key"]
     try:
@@ -200,11 +222,11 @@ def _extract_column(
                 else str(value)
             )
         if source == "regex":
-            match = re.search(key, response.text, re.I | re.S)
+            match = re.search(key, response_text, re.I | re.S)
             return "" if not match else match.group(1) if match.groups() else match.group(0)
         if source == "response":
             values = {
-                "url": str(response.url),
+                "url": redact_url(str(response.url)),
                 "reason": response.reason_phrase,
                 "http_version": response.http_version,
             }
@@ -214,7 +236,8 @@ def _extract_column(
                 return str(request_cfg.get("headers", {}).get(key[7:], ""))
             if key.startswith("param."):
                 return str(request_cfg.get("params", {}).get(key[6:], ""))
-            return str(request_cfg.get(key, ""))
+            value = str(request_cfg.get(key, ""))
+            return redact_url(value) if key == "url" else value
         if source == "literal":
             return key
     except Exception:
@@ -239,7 +262,7 @@ def _cancelled_result(index: int, cfg: dict[str, Any]) -> dict[str, Any]:
         "index": index,
         "name": str(cfg.get("name") or f"request-{index}"),
         "method": str(cfg.get("method", "GET")).upper(),
-        "url": str(cfg.get("url", "")),
+        "url": redact_url(str(cfg.get("url", ""))),
         "status": None,
         "size_bytes": 0,
         "elapsed_ms": 0.0,
@@ -256,7 +279,7 @@ def _cancelled_result(index: int, cfg: dict[str, Any]) -> dict[str, Any]:
         "request_headers": redact_headers(effective_headers),
         "configured_request_headers": redact_headers(cfg.get("headers", {})),
         "removed_request_headers": removed_headers,
-        "final_request_url": str(cfg.get("url", "")),
+        "final_request_url": redact_url(str(cfg.get("url", ""))),
         "request_content_type": "",
         "request_size_bytes": 0,
         "request_body_summary": _request_body_summary(cfg),
@@ -290,6 +313,7 @@ def execute_request(
     retries: int = 0,
     backoff: bool = False,
     cancel_event: threading.Event | None = None,
+    cookie_jar: httpx.Cookies | None = None,
 ) -> dict[str, Any]:
     columns = columns or []
     name = str(request_cfg.get("name") or f"request-{index}")
@@ -301,7 +325,7 @@ def execute_request(
         "index": index,
         "name": name,
         "method": method,
-        "url": url,
+        "url": redact_url(url),
         "status": None,
         "size_bytes": 0,
         "elapsed_ms": 0.0,
@@ -314,7 +338,7 @@ def execute_request(
         "request_headers": redact_headers(effective_headers),
         "configured_request_headers": redact_headers(request_cfg.get("headers", {})),
         "removed_request_headers": removed_headers,
-        "final_request_url": url,
+        "final_request_url": redact_url(url),
         "request_content_type": "",
         "request_size_bytes": 0,
         "request_body_summary": _request_body_summary(request_cfg),
@@ -339,10 +363,13 @@ def execute_request(
         result["error_type"] = "invalid_method"
         result["outcome"] = "validation_error"
         return result
-    result["url"] = url
+    result["url"] = redact_url(url)
     result["method"] = method
-    result["final_request_url"] = url
+    result["final_request_url"] = redact_url(url)
 
+    client_cookies = httpx.Cookies(cookie_jar) if cookie_jar is not None else httpx.Cookies()
+    if request_cfg.get("cookies"):
+        client_cookies.update(request_cfg["cookies"])
     try:
         timeout = float(request_cfg.get("timeout", 15))
         retries = _bounded_integer(retries, "retries", 0, 5)
@@ -392,7 +419,7 @@ def execute_request(
             follow_redirects=follow,
             http2=http2,
             proxy=proxy,
-            cookies=request_cfg.get("cookies"),
+            cookies=client_cookies,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         ) as client:
             for attempt in range(attempts):
@@ -403,11 +430,13 @@ def execute_request(
                 try:
                     preview_buffer = bytearray()
                     response_size = 0
+                    response_hasher = hashlib.sha256()
                     with client.stream(**kwargs) as response:
                         for chunk in response.iter_bytes(chunk_size=64 * 1024):
                             if cancel_event and cancel_event.is_set():
                                 return _cancelled_result(index, request_cfg)
                             response_size += len(chunk)
+                            response_hasher.update(chunk)
                             remaining = body_limit - len(preview_buffer)
                             if remaining > 0:
                                 preview_buffer.extend(chunk[:remaining])
@@ -417,6 +446,8 @@ def execute_request(
                         raise
                     delay = (2**attempt if backoff else 1) + _JITTER.uniform(0, 0.2)
                     time.sleep(delay)
+            if cookie_jar is not None:
+                cookie_jar.update(client.cookies)
 
         preview_bytes = bytes(preview_buffer)
         encoding = response.encoding or "utf-8"
@@ -434,12 +465,13 @@ def execute_request(
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
                 "content_type": response.headers.get("Content-Type", ""),
                 "http_version": response.http_version,
-                "location": response.headers.get("Location", ""),
+                "location": redact_url(response.headers.get("Location", "")),
                 "body_preview": preview,
                 "body_truncated": response_size > len(preview_bytes),
+                "response_body_sha256": response_hasher.hexdigest(),
                 "response_headers": redact_headers(dict(response.headers)),
                 "request_headers": redact_headers(dict(response.request.headers)),
-                "final_request_url": str(response.request.url),
+                "final_request_url": redact_url(str(response.request.url)),
                 "request_content_type": response.request.headers.get("Content-Type", ""),
                 "request_size_bytes": _request_size(response.request),
                 "response_received": True,
@@ -448,7 +480,7 @@ def execute_request(
         )
         for column in columns:
             result["custom"][column["name"]] = _extract_column(
-                column, response, request_cfg, parsed_json
+                column, response, request_cfg, parsed_json, preview
             )
     except Exception as exc:
         result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
@@ -573,26 +605,38 @@ def run_requests(
         )
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(task, index, cfg): index for index, cfg in pending}
+        pending_iterator = iter(pending)
+        futures: dict[Any, int] = {}
+        for _ in range(min(workers, len(pending))):
+            index, cfg = next(pending_iterator)
+            futures[executor.submit(task, index, cfg)] = index
         total = len(requests_cfg)
         completed_count = len(completed_before)
-        for future in as_completed(futures):
-            item = future.result()
-            results.append(item)
-            completed_count += 1
-            if checkpoint:
-                completed_indices = sorted(completed_before | {row["index"] for row in results})
-                atomic_json_write(
-                    checkpoint,
-                    {
-                        "request_signature": request_signature,
-                        "completed": completed_indices,
-                        "results": sorted(results, key=lambda row: row["index"]),
-                        "updated_at": utc_now(),
-                    },
-                )
-            if callback:
-                callback(completed_count, total, item)
+        while futures:
+            completed_futures, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in completed_futures:
+                futures.pop(future)
+                item = future.result()
+                results.append(item)
+                completed_count += 1
+                if checkpoint:
+                    completed_indices = sorted(completed_before | {row["index"] for row in results})
+                    atomic_json_write(
+                        checkpoint,
+                        {
+                            "request_signature": request_signature,
+                            "completed": completed_indices,
+                            "results": sorted(results, key=lambda row: row["index"]),
+                            "updated_at": utc_now(),
+                        },
+                    )
+                if callback:
+                    callback(completed_count, total, item)
+                try:
+                    index, cfg = next(pending_iterator)
+                except StopIteration:
+                    continue
+                futures[executor.submit(task, index, cfg)] = index
 
     results.sort(key=lambda item: item["index"])
     return enrich_results(

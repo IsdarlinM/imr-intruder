@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import tempfile
@@ -17,6 +18,38 @@ def free_port() -> int:
 
 
 class WebControlTests(unittest.TestCase):
+    def test_status_redacts_tokens_from_legacy_state(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env = {"IMR_INTRUDER_STATE": str(root / "state")}
+            with patch.dict(os.environ, env, clear=False):
+                from imr_intruder.paths import ensure_paths
+                from imr_intruder.storage import atomic_json_write
+
+                paths = ensure_paths()
+                atomic_json_write(
+                    paths.web_state,
+                    {
+                        "pid": 123,
+                        "url": "http://127.0.0.1:7415",
+                        "token": "legacy-secret",
+                        "bootstrap_url": "http://127.0.0.1:7415/?token=legacy-secret",
+                    },
+                )
+                with (
+                    patch("imr_intruder.webctl._alive", return_value=True),
+                    patch("imr_intruder.webctl._health", return_value=True),
+                ):
+                    current = status()
+                self.assertTrue(current["running"])
+                self.assertNotIn("token", current)
+                self.assertNotIn("bootstrap_url", current)
+                self.assertNotIn("legacy-secret", json.dumps(current))
+
+    def test_remote_background_requires_scope(self):
+        with self.assertRaisesRegex(ValueError, "requires at least one --scope"):
+            start_background("0.0.0.0", 7415, "token", True, True)
+
     def test_background_lifecycle(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -33,9 +66,12 @@ class WebControlTests(unittest.TestCase):
                 started = start_background("127.0.0.1", port, "--dash-prefixed-token", False, False)
                 try:
                     self.assertTrue(started["running"])
+                    self.assertNotIn("token", started)
                     current = status()
                     self.assertTrue(current["running"])
                     self.assertEqual(current["port"], port)
+                    self.assertNotIn("token", current)
+                    self.assertNotIn("--dash-prefixed-token", json.dumps(current))
                 finally:
                     stopped = stop()
                 self.assertTrue(stopped["stopped"])

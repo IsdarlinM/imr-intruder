@@ -7,6 +7,19 @@ from typing import Any
 from urllib.parse import parse_qsl
 
 
+def _pairs_to_multimap(pairs: list[tuple[str, str]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        existing = result.get(key)
+        if existing is None:
+            result[key] = value
+        elif isinstance(existing, list):
+            existing.append(value)
+        else:
+            result[key] = [existing, value]
+    return result
+
+
 def _split_headers_body(text: str) -> tuple[str, str]:
     normalized = text.replace("\r\n", "\n")
     head, separator, body = normalized.partition("\n\n")
@@ -32,7 +45,7 @@ def parse_raw_request(text: str, default_scheme: str = "https") -> dict[str, Any
     if target.startswith(("http://", "https://")):
         url = target
     else:
-        host = headers.get("Host") or headers.get("host")
+        host = next((value for key, value in headers.items() if key.lower() == "host"), None)
         if not host:
             raise ValueError("Raw request requires a Host header for relative targets.")
         url = f"{default_scheme}://{host}{target}"
@@ -46,7 +59,7 @@ def parse_raw_request(text: str, default_scheme: str = "https") -> dict[str, Any
             except json.JSONDecodeError:
                 request["body"] = body
         elif "application/x-www-form-urlencoded" in content_type:
-            request["data"] = dict(parse_qsl(body, keep_blank_values=True))
+            request["data"] = _pairs_to_multimap(parse_qsl(body, keep_blank_values=True))
         else:
             request["body"] = body
     return request
@@ -308,7 +321,7 @@ def parse_curl(command: str) -> dict[str, Any]:
     elif data_parts:
         body = "&".join(data_parts)
         if data_as_query:
-            request["params"] = dict(parse_qsl(body, keep_blank_values=True))
+            request["params"] = _pairs_to_multimap(parse_qsl(body, keep_blank_values=True))
             return request
         content_type = headers.get("Content-Type", "").lower()
         if "application/json" in content_type:
@@ -317,7 +330,7 @@ def parse_curl(command: str) -> dict[str, Any]:
             except json.JSONDecodeError:
                 request["body"] = body
         elif "application/x-www-form-urlencoded" in content_type or "=" in body:
-            request["data"] = dict(parse_qsl(body, keep_blank_values=True))
+            request["data"] = _pairs_to_multimap(parse_qsl(body, keep_blank_values=True))
         else:
             request["body"] = body
     return request
@@ -343,11 +356,13 @@ def parse_har(data: dict[str, Any]) -> list[dict[str, Any]]:
             for item in source.get("cookies", [])
             if item.get("name")
         }
-        params = {
-            item["name"]: item.get("value", "")
-            for item in source.get("queryString", [])
-            if item.get("name")
-        }
+        params = _pairs_to_multimap(
+            [
+                (item["name"], item.get("value", ""))
+                for item in source.get("queryString", [])
+                if item.get("name")
+            ]
+        )
         request: dict[str, Any] = {
             "name": f"har-{position}",
             "method": source.get("method", "GET"),
@@ -360,9 +375,13 @@ def parse_har(data: dict[str, Any]) -> list[dict[str, Any]]:
         mime = str(post.get("mimeType", "")).lower()
         text = post.get("text")
         if post.get("params"):
-            request["data"] = {
-                item["name"]: item.get("value", "") for item in post["params"] if item.get("name")
-            }
+            request["data"] = _pairs_to_multimap(
+                [
+                    (item["name"], item.get("value", ""))
+                    for item in post["params"]
+                    if item.get("name")
+                ]
+            )
         elif isinstance(text, str):
             if "application/json" in mime:
                 try:

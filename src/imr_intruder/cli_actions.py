@@ -29,10 +29,13 @@ from .storage import (
     create_session,
     create_workspace,
     current_workspace,
+    delete_history_record,
     delete_session,
     export_workspace,
+    list_history_records,
     list_sessions,
     list_workspaces,
+    load_history_record,
     load_session,
     save_session,
     set_current_workspace,
@@ -143,6 +146,39 @@ def cmd_workspace(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_history(args: argparse.Namespace) -> int:
+    if args.history_action == "list":
+        rows = list_history_records()
+        if args.json_output:
+            _json_print(rows)
+        elif rows:
+            for item in rows:
+                console.print(
+                    f"{item.get('job_id')}  {item.get('status')}  "
+                    f"{item.get('completed')}/{item.get('total')}  {item.get('name')}"
+                )
+        else:
+            console.print("No history")
+        return 0
+    if args.history_action == "show":
+        record = dict(load_history_record(args.job_id))
+        if not args.show_requests:
+            record.pop("requests", None)
+        _json_print(record)
+        return 0
+    if args.history_action == "delete":
+        delete_history_record(args.job_id)
+        console.print(f"Deleted history item {args.job_id}")
+        return 0
+    if args.history_action == "replay":
+        requests = load_history_record(args.job_id).get("requests")
+        if not isinstance(requests, list) or not requests:
+            raise ValueError("History item does not contain replayable requests.")
+        results = _run(args, requests)
+        return 1 if any(item.get("error") for item in results) else 0
+    raise ValueError(f"Unknown history action: {args.history_action}")
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     results = load_results(Path(args.input))
     output = build_html_report(results, Path(args.output), args.title)
@@ -189,7 +225,7 @@ def cmd_plugins(args: argparse.Namespace) -> int:
 
 def cmd_collab(args: argparse.Namespace) -> int:
     if args.collab_action == "create-token":
-        token = create_token(args.name, args.role)
+        token = create_token(args.name, args.role, args.expires_hours)
         console.print(token)
     elif args.collab_action == "list":
         _json_print(list_tokens())
@@ -205,7 +241,12 @@ def cmd_web(args: argparse.Namespace) -> int:
         if args.background:
             _json_print(
                 start_background(
-                    args.host, args.port, args.token, args.allow_remote, args.multiuser
+                    args.host,
+                    args.port,
+                    args.token,
+                    args.allow_remote,
+                    args.multiuser,
+                    args.scope,
                 )
             )
             return 0
@@ -217,6 +258,7 @@ def cmd_web(args: argparse.Namespace) -> int:
             args.allow_remote,
             args.multiuser,
             not args.no_browser,
+            args.scope,
         )
     if action == "status":
         current = web_status()

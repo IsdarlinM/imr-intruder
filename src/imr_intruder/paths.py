@@ -26,6 +26,10 @@ class AppPaths:
         return self.data / "history"
 
     @property
+    def requests(self) -> Path:
+        return self.data / "requests"
+
+    @property
     def macros(self) -> Path:
         return self.data / "macros"
 
@@ -40,6 +44,10 @@ class AppPaths:
     @property
     def web_pid(self) -> Path:
         return self.state / "web-child.json"
+
+    @property
+    def web_token(self) -> Path:
+        return self.state / "web-token.json"
 
 
 def _env_path(name: str, fallback: Path) -> Path:
@@ -67,6 +75,7 @@ def ensure_paths() -> AppPaths:
         paths.sessions,
         paths.workspaces,
         paths.history,
+        paths.requests,
         paths.macros,
     ):
         directory.mkdir(parents=True, exist_ok=True)
