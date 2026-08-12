@@ -158,6 +158,24 @@ def _clean_env() -> dict[str, str]:
     return env
 
 
+def _verify_active_version(expected: str) -> str:
+    version_file = ensure_paths().home / "current-version"
+    if not version_file.is_file():
+        raise RuntimeError("Installer completed without activating a release.")
+    active = version_file.read_text(encoding="utf-8").strip()
+    if not active:
+        raise RuntimeError("Installer left the active release version empty.")
+    try:
+        matches = Version(active) == Version(expected)
+    except InvalidVersion as exc:
+        raise RuntimeError(f"Installer activated an invalid version: {active}") from exc
+    if not matches:
+        raise RuntimeError(
+            f"Installer downloaded {expected}, but the active release is still {active}."
+        )
+    return active
+
+
 def install_update(
     info: UpdateInfo,
     *,
@@ -208,7 +226,14 @@ def install_update(
         completed = subprocess.run(command, env=_clean_env(), text=True, check=False)
         if completed.returncode != 0:
             raise RuntimeError(f"Installer returned exit code {completed.returncode}.")
+    active_version = _verify_active_version(archive_version)
     if info.source == "main":
         marker = ensure_paths().state / "installed_main_commit"
         marker.write_text(info.latest + "\n", encoding="utf-8")
-    return {"installed": True, "version": info.latest, "sha256": digest}
+    return {
+        "installed": True,
+        "version": active_version,
+        "source": info.source,
+        "revision": info.latest,
+        "sha256": digest,
+    }

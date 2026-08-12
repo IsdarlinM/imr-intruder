@@ -99,6 +99,17 @@ imr-intruder update
 ```
 
 No new clone is required. The updater downloads and validates a GitHub archive and invokes the native installer from the extracted source.
+It verifies that `current-version` matches the downloaded package before reporting success. If the web console was running, the updater stops the old process; restart it afterward with `imr-intruder web start`.
+
+If an installation older than 1.4.6 remains selected in the current Linux shell, run:
+
+```bash
+imr-intruder update --channel main --force
+hash -r
+~/.local/bin/imr-intruder version
+```
+
+`hash -r` clears Bash's cached command location so the managed launcher in `~/.local/bin` is resolved immediately.
 
 ## Uninstalling
 

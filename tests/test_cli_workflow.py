@@ -261,6 +261,24 @@ class CliWorkflowTests(unittest.TestCase):
             self.assertEqual(self.invoke(["update", "--dry-run"]), 0)
             installer.assert_called_once()
 
+    def test_update_stops_stale_web_process_before_installing(self):
+        from types import SimpleNamespace
+
+        available = SimpleNamespace(
+            current="1.3.3", latest="1.4.6", available=True, source="release"
+        )
+        with (
+            patch("imr_intruder.cli_actions.check_update", return_value=available),
+            patch("imr_intruder.cli_actions.web_status", return_value={"running": True}),
+            patch("imr_intruder.cli_actions.web_stop") as stop,
+            patch(
+                "imr_intruder.cli_actions.install_update",
+                return_value={"installed": True, "version": "1.4.6"},
+            ),
+        ):
+            self.assertEqual(self.invoke(["update"]), 0)
+            stop.assert_called_once_with()
+
     def test_help_for_every_cli_command(self):
         commands = [
             ["request"],

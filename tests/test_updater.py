@@ -5,8 +5,9 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
-from imr_intruder.updater import _clean_env, _safe_extract
+from imr_intruder.updater import _clean_env, _safe_extract, _verify_active_version
 
 
 def archive(files):
@@ -35,3 +36,20 @@ class UpdaterTests(unittest.TestCase):
 
         os.environ["PYTHONPATH"] = "bad"
         self.assertNotIn("PYTHONPATH", _clean_env())
+
+    def test_active_version_must_match_downloaded_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            (home / "current-version").write_text("1.3.3\n", encoding="utf-8")
+            environment = {
+                "IMR_INTRUDER_HOME": str(home),
+                "IMR_INTRUDER_CONFIG": str(home / "config"),
+                "IMR_INTRUDER_STATE": str(home / "state"),
+                "IMR_INTRUDER_DATA": str(home / "data"),
+                "IMR_INTRUDER_CACHE": str(home / "cache"),
+            }
+            with patch.dict("os.environ", environment):
+                with self.assertRaisesRegex(RuntimeError, "still 1.3.3"):
+                    _verify_active_version("1.4.6")
+                (home / "current-version").write_text("1.4.6\n", encoding="utf-8")
+                self.assertEqual(_verify_active_version("1.4.6"), "1.4.6")

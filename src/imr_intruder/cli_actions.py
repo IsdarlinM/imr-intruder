@@ -244,7 +244,16 @@ def cmd_update(args: argparse.Namespace) -> int:
     if not info.available and not args.force:
         console.print("Already up to date.")
         return 0
-    _json_print(install_update(info, token=args.token, dry_run=args.dry_run))
+    web_was_running = False
+    if not args.dry_run:
+        current_web = web_status()
+        web_was_running = bool(current_web.get("running"))
+        if web_was_running:
+            web_stop()
+    result = install_update(info, token=args.token, dry_run=args.dry_run)
+    if web_was_running:
+        result["web_console"] = "stopped; restart it with: imr-intruder web start"
+    _json_print(result)
     return 0
 
 

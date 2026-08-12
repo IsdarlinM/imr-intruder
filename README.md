@@ -285,6 +285,7 @@ imr-intruder check-update
 ```
 
 The updater downloads a GitHub ZIP, enforces archive safety limits, rejects traversal and symlink entries, cleans inherited Python/pip environment overrides, stages the installation, validates it, and activates the versioned release through the native installer.
+It also verifies the activated `current-version` and stops an already-running web console so an old server process cannot keep serving stale assets. Restart the console after updating. On Linux, if an older command path remains cached, run `hash -r` and verify with `~/.local/bin/imr-intruder version`.
 
 ## Optional capabilities
 
